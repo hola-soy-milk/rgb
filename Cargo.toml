@@ -1,0 +1,6 @@
+[package]
+name = "rgb"
+version = "0.1.0"
+authors = ["Ramon Huidobro <ramon.martin.huidobro@gmail.com>"]
+
+[dependencies]
