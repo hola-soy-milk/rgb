@@ -3,6 +3,24 @@ struct Clock {
     t: i32,
 }
 
+struct MMU {
+}
+
+impl MMU {
+    fn rb(&mut self, i:i32) -> i32{
+        1
+    }
+    fn rw(&mut self, i:i32) -> i32{
+        1
+    }
+    fn wb(&mut self, u:i32, d:i32){
+        println!("Running comparison of B and A");
+    }
+    fn ww(&mut self, u:i32, d:i32){
+        println!("Running comparison of B and A");
+    }
+}
+
 struct Registers {
     a: i32,
     b: i32,
