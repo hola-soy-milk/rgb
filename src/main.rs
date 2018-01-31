@@ -91,6 +91,52 @@ impl CPU {
     fn ld_rr_ah(&mut self) { self.registers.a=self.registers.h; self.registers.m=1; self.registers.t=4; }
     fn ld_rr_al(&mut self) { self.registers.a=self.registers.l; self.registers.m=1; self.registers.t=4; }
     fn ld_rr_aa(&mut self) { self.registers.a=self.registers.a; self.registers.m=1; self.registers.t=4; }
+
+    fn ld_rhlmm_b(&mut self, mmu: &mut MMU) { self.registers.b=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_c(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_d(&mut self, mmu: &mut MMU) { self.registers.d=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_e(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_h(&mut self, mmu: &mut MMU) { self.registers.h=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_l(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_a(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_b(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.b); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_c(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.c); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_d(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.d); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_e(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.e); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_h(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.h); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_l(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.l); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmr_a(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.a); self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_b(&mut self, mmu: &mut MMU) { self.registers.b=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_c(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_d(&mut self, mmu: &mut MMU) { self.registers.d=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_e(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_h(&mut self, mmu: &mut MMU) { self.registers.h=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_l(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rn_a(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+
+    fn ld_hlmn(&mut self, mmu: &mut MMU) { let i: i32= mmu.rb(self.registers.pc); mmu.wb((self.registers.h<<8)+self.registers.l, i); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
+    fn ld_bcma(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.b<<8)+self.registers.c, self.registers.a); self.registers.m=2; self.registers.t=8; }
+    fn ld_dema(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.d<<8)+self.registers.e, self.registers.a); self.registers.m=2; self.registers.t=8; }
+    fn ld_mma(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rw(self.registers.pc); mmu.wb(i, self.registers.a); self.registers.pc+=2; self.registers.m=4; self.registers.t=16; }
+    fn ld_abcm(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.b<<8)+self.registers.c); self.registers.m=2; self.registers.t=8; }
+    fn ld_adem(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.d<<8)+self.registers.e); self.registers.m=2; self.registers.t=8; }
+    fn ld_amm(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rw(self.registers.pc); self.registers.a=mmu.rb(i); self.registers.pc+=2; self.registers.m=4; self.registers.t=16; }
+    fn ld_bcnn(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb(self.registers.pc); self.registers.b=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
+    fn ld_denn(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb(self.registers.pc); self.registers.d=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
+    fn ld_hlnn(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb(self.registers.pc); self.registers.h=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
+    fn ld_spnn(&mut self, mmu: &mut MMU) { self.registers.sp=mmu.rw(self.registers.pc); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
+    fn ld_hlmm(&mut self, mmu: &mut MMU) { let i: i32=mmu.rw(self.registers.pc); self.registers.pc+=2; self.registers.l=mmu.rb(i); self.registers.h=mmu.rb(i+1); self.registers.m=5; self.registers.t=20; }
+    fn ld_mmhl(&mut self, mmu: &mut MMU) { let i: i32=mmu.rw(self.registers.pc); self.registers.pc+=2; mmu.ww(i,(self.registers.h<<8)+self.registers.l); self.registers.m=5; self.registers.t=20; }
+    fn ld_hlia(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l, self.registers.a); self.registers.l=(self.registers.l+1)&255; if(self.registers.l == 0){ self.registers.h=(self.registers.h+1)&255;} self.registers.m=2; self.registers.t=8; }
+    fn ld_ahli(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.l=(self.registers.l+1)&255; if(self.registers.l == 0){self.registers.h=(self.registers.h+1)&255;} self.registers.m=2; self.registers.t=8; }
+    fn ld_hlda(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l, self.registers.a); self.registers.l=(self.registers.l-1)&255; if(self.registers.l==255){self.registers.h=(self.registers.h-1)&255;} self.registers.m=2; self.registers.t=8; }
+    fn ld_ahld(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.l=(self.registers.l-1)&255; if(self.registers.l==255){self.registers.h=(self.registers.h-1)&255;} self.registers.m=2; self.registers.t=8; }
+
+    fn ld_aion(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rb(self.registers.pc); self.registers.a=mmu.rb(0xFF00+i); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
+    fn ld_iona(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rb(self.registers.pc); mmu.wb(0xFF00+i,self.registers.a); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
+    fn ld_aioc(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb(0xFF00+self.registers.c); self.registers.m=2; self.registers.t=8; }
+    fn ld_ioca(&mut self, mmu: &mut MMU) { mmu.wb(0xFF00+self.registers.c,self.registers.a); self.registers.m=2; self.registers.t=8; }
+    fn ld_hlspn(&mut self, mmu: &mut MMU) { let mut i: i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; i+=self.registers.sp; self.registers.h=(i>>8)&255; self.registers.l=i&255; self.registers.m=3; self.registers.t=12; }
     // Add E to A, leaving result in A (ADD A, E)
     fn addr_e(&mut self) {
          // Addition
