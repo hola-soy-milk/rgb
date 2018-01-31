@@ -137,6 +137,14 @@ impl CPU {
     fn ld_aioc(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb(0xFF00+self.registers.c); self.registers.m=2; self.registers.t=8; }
     fn ld_ioca(&mut self, mmu: &mut MMU) { mmu.wb(0xFF00+self.registers.c,self.registers.a); self.registers.m=2; self.registers.t=8; }
     fn ld_hlspn(&mut self, mmu: &mut MMU) { let mut i: i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; i+=self.registers.sp; self.registers.h=(i>>8)&255; self.registers.l=i&255; self.registers.m=3; self.registers.t=12; }
+
+    fn swap_r_b(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.b; self.registers.b=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_c(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.c; self.registers.c=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_d(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.d; self.registers.d=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_e(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.e; self.registers.e=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_h(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.h; self.registers.h=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_l(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.l; self.registers.l=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_a(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.a; self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
     // Add E to A, leaving result in A (ADD A, E)
     fn addr_e(&mut self) {
          // Addition
