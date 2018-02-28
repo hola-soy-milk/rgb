@@ -42,6 +42,8 @@ struct CPU {
 }
 
 impl CPU {
+    fn fzz(&mut self, i: i32) { self.registers.f=0; if(i == 0) { self.registers.f|=128;} self.registers.f|=0; }
+    fn fz(&mut self, i: i32, aes: i32) { self.registers.f=0; if(i == 0) { self.registers.f|=128;} self.registers.f|=0x40; }
     fn ld_rr_bb(&mut self) { self.registers.b=self.registers.b; self.registers.m=1; self.registers.t=4; }
     fn ld_rr_bc(&mut self) { self.registers.b=self.registers.c; self.registers.m=1; self.registers.t=4; }
     fn ld_rr_bd(&mut self) { self.registers.b=self.registers.d; self.registers.m=1; self.registers.t=4; }
@@ -145,26 +147,15 @@ impl CPU {
     fn swap_r_h(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.h; self.registers.h=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
     fn swap_r_l(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.l; self.registers.l=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
     fn swap_r_a(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.a; self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    // Add E to A, leaving result in A (ADD A, E)
-    fn addr_e(&mut self) {
-         // Addition
-        self.registers.a += self.registers.e;
-         // Flag clearing
-        self.registers.f = 0;
-        // Check for zero
-        if (self.registers.a & 255) == 0 {
-            self.registers.f |= 0x80;
-        }
-        // Check for carry
-        if self.registers.a > 255 {
-            self.registers.f |= 0x10;
-        }
-        // Mask to 8 bits
-        self.registers.a &= 255;
-        // 1 M-time taken
-        self.registers.m = 1;
-        self.registers.t = 4;
-    }
+    /*--- Data processing ---*/
+    fn addr_b(&mut self) { self.registers.a+=self.registers.b; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_c(&mut self) { self.registers.a+=self.registers.c; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_d(&mut self) { self.registers.a+=self.registers.d; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_e(&mut self) { self.registers.a+=self.registers.e; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_h(&mut self) { self.registers.a+=self.registers.h; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_l(&mut self) { self.registers.a+=self.registers.l; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addr_a(&mut self) { self.registers.a+=self.registers.a; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+
     // Compare B to A, setting flags (CP A, B)
     fn cpr_b(&mut self) {
         // Temporary copy of A
