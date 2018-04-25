@@ -155,34 +155,23 @@ impl CPU {
     fn addr_h(&mut self) { self.registers.a+=self.registers.h; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
     fn addr_l(&mut self) { self.registers.a+=self.registers.l; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
     fn addr_a(&mut self) { self.registers.a+=self.registers.a; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    fn addhl(&mut self, mmu: &mut MMU) { let l:i32 = self.registers.l; self.registers.a+=mmu.rb((self.registers.h<<8)+l); let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255){self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
+    fn addn(&mut self, mmu: &mut MMU) { self.registers.a+=mmu.rb(self.registers.pc); self.registers.pc+=1; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255){self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
+    fn addhlbc(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.b<<8)+self.registers.c; if(hl>65535){self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
+    fn addhlde(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.d<<8)+self.registers.e; if(hl>65535) { self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
+    fn addhlhl(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.h<<8)+self.registers.l; if(hl>65535) {self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
+    fn addhlsp(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=self.registers.sp; if(hl>65535){ self.registers.f|=0x10;} else {self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
+    fn addspn(&mut self, mmu: &mut MMU) { let mut i:i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; self.registers.sp+=i; self.registers.m=4; self.registers.t=16; }
 
-    // Compare B to A, setting flags (CP A, B)
-    fn cpr_b(&mut self) {
-        // Temporary copy of A
-        let mut i : i32;
-        i = self.registers.a;
-        // Subtract B
-        i -= self.registers.b;
-        // Set subtraction flag
-        self.registers.f |= 0x40;
-        // Check for 0
-        if (i & 255) == 0 {
-            self.registers.f |= 0x80;
-        }
-        // Check for underflow
-        if i < 0 {
-            self.registers.f |= 0x10;
-        }
-        // 1 M-time taken
-        self.registers.m = 1;
-        self.registers.t = 4;
-    }
-
-    fn nop(&mut self) {
-        // 1 M-time taken
-        self.registers.m = 1;
-        self.registers.t = 4;
-    }
+    fn adcr_b(&mut self) { self.registers.a+=self.registers.b; self.registers.a+= if(self.registers.f&0x10 > 0) {1} else{0}; let i:i32= self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_c(&mut self) { Z80._r.a+=Z80._r.c; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adcr_d(&mut self) { Z80._r.a+=Z80._r.d; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adcr_e(&mut self) { Z80._r.a+=Z80._r.e; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adcr_h(&mut self) { Z80._r.a+=Z80._r.h; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adcr_l(&mut self) { Z80._r.a+=Z80._r.l; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adcr_a(&mut self) { Z80._r.a+=Z80._r.a; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
+    //fn adchl(&mut self) { Z80._r.a+=MMU.rb((Z80._r.h<<8)+Z80._r.l); Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=2; Z80._r.t=8; },
+    //fn adcn(&mut self) { Z80._r.a+=MMU.rb(Z80._r.pc); Z80._r.pc++; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=2; Z80._r.t=8; },
 
 }
 
@@ -219,7 +208,7 @@ fn main() {
     println!("Adding E to A");
     cpu.addr_e();
     println!("cpu contains registers with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", cpu.registers.a, cpu.registers.b, cpu.registers.c, cpu.registers.d, cpu.registers.e, cpu.registers.h, cpu.registers.l, cpu.registers.f, cpu.registers.pc, cpu.registers.sp, cpu.registers.m, cpu.registers.t);
-    cpu.cpr_b();
+    //cpu.cpr_b();
     println!("Running comparison of B and A");
     println!("cpu contains registers with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", cpu.registers.a, cpu.registers.b, cpu.registers.c, cpu.registers.d, cpu.registers.e, cpu.registers.h, cpu.registers.l, cpu.registers.f, cpu.registers.pc, cpu.registers.sp, cpu.registers.m, cpu.registers.t);
 }
