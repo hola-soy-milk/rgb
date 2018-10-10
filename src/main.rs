@@ -4,20 +4,100 @@ struct Clock {
 }
 
 struct MMU {
+    inbios: i32,
+    bios: [i32],
 }
 
 impl MMU {
-    fn rb(&mut self, i:i32) -> i32{
+    fn rw(&mut self, i:i32) -> i32 {
         1
     }
-    fn rw(&mut self, i:i32) -> i32{
-        1
-    }
-    fn wb(&mut self, u:i32, d:i32){
+    fn wb(&mut self, u:i32, d:i32) {
         println!("Running comparison of B and A");
     }
-    fn ww(&mut self, u:i32, d:i32){
+    fn ww(&mut self, u:i32, d:i32) {
         println!("Running comparison of B and A");
+    }
+    fn rb(&mut self, addr:i32) -> i32 {
+        match(addr&0xF000) {
+            // ROM bank 0
+            0x0000 => {
+                if(self.inbios > 0)
+                {
+                    if(addr<0x0100) { self.bios[addr] as usize }
+                    else if(Z80._r.pc == 0x0100)
+                    {
+                        self.inbios = 0;
+                        //LOG.out('MMU', 'Leaving BIOS.');
+                    }
+                }
+                else
+                {
+                    self._rom.charCodeAt(addr)
+                }
+            },
+            0x1000 | 0x2000 | 0x3000 => {
+                self._rom.charCodeAt(addr)
+            },
+
+            // ROM bank 1
+            0x4000 | 0x5000 | 0x6000 | 0x7000 => {
+                self._rom.charCodeAt(self._romoffs+(addr&0x3FFF))
+            },
+
+            // VRAM
+            0x8000 | 0x9000 => {
+                GPU._vram[addr&0x1FFF]
+            },
+
+            // External RAM
+            0xA000 | 0xB000 => {
+            self._eram[self._ramoffs+(addr&0x1FFF)]
+            },
+            // Work RAM and echo
+            0xC000 | 0xD000 | 0xE000 => {
+            self._wram[addr&0x1FFF]
+            },
+
+            // Everything else
+            0xF000 => {
+                match(addr&0x0F00) {
+                    // Echo RAM
+                    0x000 | 0x100 | 0x200 | 0x300 | 0x400 | 0x500 | 0x600 | 0x700 | 0x800 | 0x900 | 0xA00 | 0xB00 | 0xC00 | 0xD00 => {
+                        self._wram[addr&0x1FFF]
+                    },
+                    // OAM
+                    0xE00 => {
+                        if (addr&0xFF)<0xA0 { GPU._oam[addr&0xFF]} else {0}
+                    },
+                    // Zeropage RAM, I/O, interrupts
+                    0xF00 => {
+                        if(addr == 0xFFFF) { self._ie }
+                        else if(addr > 0xFF7F) { self._zram[addr&0x7F] }
+                        else {
+                            match(addr&0xF0)
+                            {
+                                0x00 => {
+                                    match(addr&0xF)
+                                    {
+                                        0 => { KEY.rb(); },    // JOYP
+                                        4 | 5 | 6 | 7 => { TIMER.rb(addr) },
+                                        15 => { self._if }    // Interrupt flags
+                                        _ => { 0 }
+                                    }
+                                },
+                                0x10 | 0x20 | 0x30 => {
+                                    0
+                                },
+                                0x40 | 0x50 | 0x60 | 0x70 => {
+                                    GPU.rb(addr)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -163,15 +243,15 @@ impl CPU {
     fn addhlsp(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=self.registers.sp; if(hl>65535){ self.registers.f|=0x10;} else {self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
     fn addspn(&mut self, mmu: &mut MMU) { let mut i:i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; self.registers.sp+=i; self.registers.m=4; self.registers.t=16; }
 
-    fn adcr_b(&mut self) { self.registers.a+=self.registers.b; self.registers.a+= if(self.registers.f&0x10 > 0) {1} else{0}; let i:i32= self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_c(&mut self) { Z80._r.a+=Z80._r.c; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adcr_d(&mut self) { Z80._r.a+=Z80._r.d; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adcr_e(&mut self) { Z80._r.a+=Z80._r.e; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adcr_h(&mut self) { Z80._r.a+=Z80._r.h; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adcr_l(&mut self) { Z80._r.a+=Z80._r.l; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adcr_a(&mut self) { Z80._r.a+=Z80._r.a; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=1; Z80._r.t=4; },
-    //fn adchl(&mut self) { Z80._r.a+=MMU.rb((Z80._r.h<<8)+Z80._r.l); Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=2; Z80._r.t=8; },
-    //fn adcn(&mut self) { Z80._r.a+=MMU.rb(Z80._r.pc); Z80._r.pc++; Z80._r.a+=(Z80._r.f&0x10)?1:0; Z80._ops.fz(Z80._r.a); if(Z80._r.a>255) Z80._r.f|=0x10; Z80._r.a&=255; Z80._r.m=2; Z80._r.t=8; },
+    //fn adcr_b(&mut self) { self.registers.a+=self.registers.b; self.registers.a+= if(self.registers.f&0x10 > 0) {1} else{0}; let i:i32= self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_c(&mut self) { self.registers.a+=self.registers.c; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_d(&mut self) { self.registers.a+=self.registers.d; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_e(&mut self) { self.registers.a+=self.registers.e; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_h(&mut self) { self.registers.a+=self.registers.h; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_l(&mut self) { self.registers.a+=self.registers.l; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adcr_a(&mut self) { self.registers.a+=self.registers.a; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
+    //fn adchl(&mut self) { self.registers.a+=MMU.rb((self.registers.h<<8)+self.registers.l); self.registers.a+= if(self.registers.f&0x10 > 0){1}else {0}; self.fzz(self.registers.a); if(self.registers.a>255) {self.registers.f|=0x10}; self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
+    //fn adcn(&mut self) { self.registers.a+=MMU.rb(self.registers.pc); self.registers.pc+=1; self.registers.a+=if(self.registers.f&0x10 > 0){1}else {0}; self.fzz(self.registers.a); if(self.registers.a>255) {self.registers.f|=0x10}; self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
 
 }
 
