@@ -3,9 +3,29 @@ struct Clock {
     t: i32,
 }
 
+struct GPU {
+    vram: Vec<i32>,
+    oam: Vec<i32>,
+}
+
+impl GPU {
+    fn rb(&mut self, addr:i32) -> i32 {
+        0
+    }
+}
+
 struct MMU {
+    gpu: GPU,
     inbios: i32,
-    bios: [i32],
+    ie: i32,
+    ief: i32,
+    romoffset: i32,
+    ramoffset: i32,
+    bios: Vec<i32>,
+    eram: Vec<i32>,
+    wram: Vec<i32>,
+    zram: Vec<i32>,
+    rom: String,
 }
 
 impl MMU {
@@ -24,39 +44,42 @@ impl MMU {
             0x0000 => {
                 if(self.inbios > 0)
                 {
-                    if(addr<0x0100) { self.bios[addr] as usize }
-                    else if(Z80._r.pc == 0x0100)
-                    {
-                        self.inbios = 0;
-                        //LOG.out('MMU', 'Leaving BIOS.');
+                    if(addr<0x0100) { self.bios[addr as usize] }
+                    //else if(Z80._r.pc == 0x0100)
+                    //{
+                        //self.inbios = 0;
+                        //0
+                    //}
+                    else {
+                        0
                     }
                 }
                 else
                 {
-                    self._rom.charCodeAt(addr)
+                    self.rom.as_bytes()[addr as usize] as i32
                 }
             },
             0x1000 | 0x2000 | 0x3000 => {
-                self._rom.charCodeAt(addr)
+                self.rom.as_bytes()[addr as usize] as i32
             },
 
             // ROM bank 1
             0x4000 | 0x5000 | 0x6000 | 0x7000 => {
-                self._rom.charCodeAt(self._romoffs+(addr&0x3FFF))
+                self.rom.as_bytes()[(self.romoffset+(addr&0x3FFF)) as usize] as i32
             },
 
             // VRAM
             0x8000 | 0x9000 => {
-                GPU._vram[addr&0x1FFF]
+                self.gpu.vram[( addr&0x1FFF ) as usize]
             },
 
             // External RAM
             0xA000 | 0xB000 => {
-            self._eram[self._ramoffs+(addr&0x1FFF)]
+            self.eram[(self.ramoffset+(addr&0x1FFF)) as usize]
             },
             // Work RAM and echo
             0xC000 | 0xD000 | 0xE000 => {
-            self._wram[addr&0x1FFF]
+            self.wram[( addr&0x1FFF ) as usize]
             },
 
             // Everything else
@@ -64,25 +87,25 @@ impl MMU {
                 match(addr&0x0F00) {
                     // Echo RAM
                     0x000 | 0x100 | 0x200 | 0x300 | 0x400 | 0x500 | 0x600 | 0x700 | 0x800 | 0x900 | 0xA00 | 0xB00 | 0xC00 | 0xD00 => {
-                        self._wram[addr&0x1FFF]
+                        self.wram[( addr&0x1FFF ) as usize]
                     },
                     // OAM
                     0xE00 => {
-                        if (addr&0xFF)<0xA0 { GPU._oam[addr&0xFF]} else {0}
+                        if (addr&0xFF)<0xA0 { self.gpu.oam[( addr&0xFF ) as usize]} else {0}
                     },
                     // Zeropage RAM, I/O, interrupts
                     0xF00 => {
-                        if(addr == 0xFFFF) { self._ie }
-                        else if(addr > 0xFF7F) { self._zram[addr&0x7F] }
+                        if(addr == 0xFFFF) { self.ie }
+                        else if(addr > 0xFF7F) { self.zram[( addr&0x7F ) as usize] }
                         else {
                             match(addr&0xF0)
                             {
                                 0x00 => {
                                     match(addr&0xF)
                                     {
-                                        0 => { KEY.rb(); },    // JOYP
-                                        4 | 5 | 6 | 7 => { TIMER.rb(addr) },
-                                        15 => { self._if }    // Interrupt flags
+                                        0 => { 0 },//KEY.rb(); },    // JOYP
+                                        //4 | 5 | 6 | 7 => { TIMER.rb(addr) },
+                                        15 => { self.ief }    // Interrupt flags
                                         _ => { 0 }
                                     }
                                 },
@@ -90,13 +113,16 @@ impl MMU {
                                     0
                                 },
                                 0x40 | 0x50 | 0x60 | 0x70 => {
-                                    GPU.rb(addr)
-                                }
+                                    self.gpu.rb(addr)
+                                },
+                                _ => {0}
                             }
                         }
-                    }
+                    },
+                    _ => {0}
                 }
-            }
+            },
+            _ => {0}
         }
     }
 }
