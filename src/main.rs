@@ -1,6 +1,195 @@
+#[macro_use]
+extern crate lazy_static;
+
+use std::sync::Mutex;
+
+lazy_static! {
+    static ref mmu: Mutex<MMU> = {
+        let mut m = MMU {
+            inbios: 0,
+            ie: 0,
+            ief: 0,
+            romoffset: 0,
+            ramoffset: 0,
+            bios: Vec::new(),
+            eram: Vec::new(),
+            wram: Vec::new(),
+            zram: Vec::new(),
+            rom: "".to_string(),
+        };
+        Mutex::new(m)
+    };
+
+    static ref timer: Mutex<Timer> = {
+        let mut m = Timer {
+            div: 0,
+            sdiv: 0,
+            tma: 0,
+            tima: 0,
+            tac: 0,
+        };
+        Mutex::new(m)
+    };
+
+    static ref timer_clock: Mutex<TimerClock> = {
+        let mut m = TimerClock {
+            main: 0,
+            sub: 0,
+            div: 0,
+        };
+        Mutex::new(m)
+    };
+
+    static ref gpu: Mutex<GPU> = {
+        let mut m = GPU {
+            vram: Vec::new(),
+            oam: Vec::new(),
+        };
+        Mutex::new(m)
+    };
+
+    static ref clock: Mutex<Clock> = {
+        let mut m = Clock {
+            m: 0,
+            t: 0,
+        };
+        Mutex::new(m)
+    };
+
+    static ref registers: Mutex<Registers>  = {
+        let m = Registers {
+            a: 0,
+            b: 0,
+            c: 0,
+            d: 0,
+            e: 0,
+            h: 0,
+            l: 0,
+            f: 0,
+            pc: 0,
+            sp: 0,
+            m: 0,
+            t: 0,
+        };
+        Mutex::new(m)
+    };
+
+    static ref cpu: Mutex<CPU>  = {
+        let mut m = CPU {
+        };
+        Mutex::new(m)
+    };
+
+}
 struct Clock {
     m: i32,
     t: i32,
+}
+
+struct TimerClock {
+    main: i32,
+    sub: i32,
+    div: i32
+}
+
+struct Timer {
+  div: i32,
+  sdiv: i32,
+  tma: i32,
+  tima: i32,
+  tac: i32,
+}
+
+impl Timer {
+
+    fn reset(&mut self) {
+        self.div = 0;
+        self.sdiv = 0;
+        self.tma = 0;
+        self.tima = 0;
+        self.tac = 0;
+        timer_clock.lock().unwrap().main = 0;
+        timer_clock.lock().unwrap().sub = 0;
+        timer_clock.lock().unwrap().div = 0;
+    }
+
+    fn step(&mut self) {
+        self.tima += 1;
+        timer_clock.lock().unwrap().main = 0;
+        if(self.tima > 255)
+        {
+            self.tima = self.tma;
+            mmu.lock().unwrap().ief |= 4;
+        }
+    }
+
+  //inc: function() {
+    //var oldclk = TIMER._clock.lock().unwrap().main;
+
+    //TIMER._clock.lock().unwrap().sub += Z80._r.m;
+    //if(TIMER._clock.lock().unwrap().sub > 3)
+    //{
+      //TIMER._clock.lock().unwrap().main++;
+      //TIMER._clock.lock().unwrap().sub -= 4;
+
+      //TIMER._clock.lock().unwrap().div++;
+      //if(TIMER._clock.lock().unwrap().div==16)
+      //{
+        //TIMER._clock.lock().unwrap().div = 0;
+	//TIMER._div++;
+	//TIMER._div &= 255;
+      //}
+    //}
+
+    //if(TIMER._tac & 4)
+    //{
+      //switch(TIMER._tac & 3)
+      //{
+        //case 0:
+	  //if(TIMER._clock.lock().unwrap().main >= 64) TIMER.step();
+	  //break;
+	//case 1:
+	  //if(TIMER._clock.lock().unwrap().main >=  1) TIMER.step();
+	  //break;
+	//case 2:
+	  //if(TIMER._clock.lock().unwrap().main >=  4) TIMER.step();
+	  //break;
+	//case 3:
+	  //if(TIMER._clock.lock().unwrap().main >= 16) TIMER.step();
+	  //break;
+      //}
+    //}
+  //},
+
+    fn rb(&mut self, addr:i32) -> i32 {
+        match(addr&0xF000) {
+            0xFF04 => {
+                self.div
+            },
+            0xFF05 => {
+                self.tima
+            },
+            0xFF06 => {
+                self.tma
+            },
+            0xFF07 => {
+                self.tma
+            },
+            _ => {
+                self.tma
+            }
+        }
+    }
+
+  //wb: function(addr, val) {
+    //switch(addr)
+    //{
+      //case 0xFF04: TIMER._div = 0; break;
+      //case 0xFF05: TIMER._tima = val; break;
+      //case 0xFF06: TIMER._tma = val; break;
+      //case 0xFF07: TIMER._tac = val&7; break;
+    //}
+  //}
 }
 
 struct GPU {
@@ -15,7 +204,6 @@ impl GPU {
 }
 
 struct MMU {
-    gpu: GPU,
     inbios: i32,
     ie: i32,
     ief: i32,
@@ -70,7 +258,7 @@ impl MMU {
 
             // VRAM
             0x8000 | 0x9000 => {
-                self.gpu.vram[( addr&0x1FFF ) as usize]
+                gpu.lock().unwrap().vram[( addr&0x1FFF ) as usize]
             },
 
             // External RAM
@@ -91,7 +279,7 @@ impl MMU {
                     },
                     // OAM
                     0xE00 => {
-                        if (addr&0xFF)<0xA0 { self.gpu.oam[( addr&0xFF ) as usize]} else {0}
+                        if (addr&0xFF)<0xA0 { gpu.lock().unwrap().oam[( addr&0xFF ) as usize]} else {0}
                     },
                     // Zeropage RAM, I/O, interrupts
                     0xF00 => {
@@ -104,7 +292,7 @@ impl MMU {
                                     match(addr&0xF)
                                     {
                                         0 => { 0 },//KEY.rb(); },    // JOYP
-                                        //4 | 5 | 6 | 7 => { TIMER.rb(addr) },
+                                        4 | 5 | 6 | 7 => { timer.lock().unwrap().rb(addr) },
                                         15 => { self.ief }    // Interrupt flags
                                         _ => { 0 }
                                     }
@@ -113,7 +301,7 @@ impl MMU {
                                     0
                                 },
                                 0x40 | 0x50 | 0x60 | 0x70 => {
-                                    self.gpu.rb(addr)
+                                    gpu.lock().unwrap().rb(addr)
                                 },
                                 _ => {0}
                             }
@@ -143,178 +331,149 @@ struct Registers {
 }
 
 struct CPU {
-    clock: Clock,
-    registers: Registers,
 }
 
 impl CPU {
-    fn fzz(&mut self, i: i32) { self.registers.f=0; if(i == 0) { self.registers.f|=128;} self.registers.f|=0; }
-    fn fz(&mut self, i: i32, aes: i32) { self.registers.f=0; if(i == 0) { self.registers.f|=128;} self.registers.f|=0x40; }
-    fn ld_rr_bb(&mut self) { self.registers.b=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_bc(&mut self) { self.registers.b=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_bd(&mut self) { self.registers.b=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_be(&mut self) { self.registers.b=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_bh(&mut self) { self.registers.b=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_bl(&mut self) { self.registers.b=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ba(&mut self) { self.registers.b=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_cb(&mut self) { self.registers.c=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_cc(&mut self) { self.registers.c=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_cd(&mut self) { self.registers.c=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ce(&mut self) { self.registers.c=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ch(&mut self) { self.registers.c=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_cl(&mut self) { self.registers.c=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ca(&mut self) { self.registers.c=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_db(&mut self) { self.registers.d=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_dc(&mut self) { self.registers.d=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_dd(&mut self) { self.registers.d=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_de(&mut self) { self.registers.d=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_dh(&mut self) { self.registers.d=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_dl(&mut self) { self.registers.d=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_da(&mut self) { self.registers.d=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_eb(&mut self) { self.registers.e=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ec(&mut self) { self.registers.e=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ed(&mut self) { self.registers.e=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ee(&mut self) { self.registers.e=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_eh(&mut self) { self.registers.e=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_el(&mut self) { self.registers.e=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ea(&mut self) { self.registers.e=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_hb(&mut self) { self.registers.h=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_hc(&mut self) { self.registers.h=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_hd(&mut self) { self.registers.h=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_he(&mut self) { self.registers.h=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_hh(&mut self) { self.registers.h=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_hl(&mut self) { self.registers.h=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ha(&mut self) { self.registers.h=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_lb(&mut self) { self.registers.l=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_lc(&mut self) { self.registers.l=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ld(&mut self) { self.registers.l=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_le(&mut self) { self.registers.l=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_lh(&mut self) { self.registers.l=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ll(&mut self) { self.registers.l=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_la(&mut self) { self.registers.l=self.registers.a; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ab(&mut self) { self.registers.a=self.registers.b; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ac(&mut self) { self.registers.a=self.registers.c; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ad(&mut self) { self.registers.a=self.registers.d; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ae(&mut self) { self.registers.a=self.registers.e; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_ah(&mut self) { self.registers.a=self.registers.h; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_al(&mut self) { self.registers.a=self.registers.l; self.registers.m=1; self.registers.t=4; }
-    fn ld_rr_aa(&mut self) { self.registers.a=self.registers.a; self.registers.m=1; self.registers.t=4; }
+    fn fzz(&mut self, i: i32) { registers.lock().unwrap().f=0; if(i == 0) { registers.lock().unwrap().f|=128;} registers.lock().unwrap().f|=0; }
+    fn fz(&mut self, i: i32, aes: i32) { registers.lock().unwrap().f=0; if(i == 0) { registers.lock().unwrap().f|=128;} registers.lock().unwrap().f|=0x40; }
+    fn ld_rr_bb(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_bc(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_bd(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_be(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_bh(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_bl(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ba(&mut self) { registers.lock().unwrap().b=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_cb(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_cc(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_cd(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ce(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ch(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_cl(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ca(&mut self) { registers.lock().unwrap().c=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_db(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_dc(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_dd(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_de(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_dh(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_dl(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_da(&mut self) { registers.lock().unwrap().d=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_eb(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ec(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ed(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ee(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_eh(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_el(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ea(&mut self) { registers.lock().unwrap().e=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_hb(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_hc(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_hd(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_he(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_hh(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_hl(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ha(&mut self) { registers.lock().unwrap().h=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_lb(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_lc(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ld(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_le(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_lh(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ll(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_la(&mut self) { registers.lock().unwrap().l=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ab(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().b; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ac(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().c; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ad(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().d; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ae(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().e; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_ah(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().h; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_al(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().l; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn ld_rr_aa(&mut self) { registers.lock().unwrap().a=registers.lock().unwrap().a; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
 
-    fn ld_rhlmm_b(&mut self, mmu: &mut MMU) { self.registers.b=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_c(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_d(&mut self, mmu: &mut MMU) { self.registers.d=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_e(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_h(&mut self, mmu: &mut MMU) { self.registers.h=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_l(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_rhlmm_a(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_b(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.b); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_c(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.c); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_d(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.d); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_e(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.e); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_h(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.h); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_l(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.l); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlmr_a(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l,self.registers.a); self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_b(&mut self, mmu: &mut MMU) { self.registers.b=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_c(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_d(&mut self, mmu: &mut MMU) { self.registers.d=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_e(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_h(&mut self, mmu: &mut MMU) { self.registers.h=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_l(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
-    fn ld_rn_a(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb(self.registers.pc); self.registers.pc+=1; self.registers.m=2; self.registers.t=8; }
+    fn ld_rhlmm_b(&mut self) { registers.lock().unwrap().b=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_c(&mut self) { registers.lock().unwrap().c=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_d(&mut self) { registers.lock().unwrap().d=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_e(&mut self) { registers.lock().unwrap().e=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_h(&mut self) { registers.lock().unwrap().h=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_l(&mut self) { registers.lock().unwrap().l=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rhlmm_a(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_b(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().b); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_c(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().c); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_d(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().d); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_e(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().e); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_h(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().h); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_l(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().l); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlmr_a(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,registers.lock().unwrap().a); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_b(&mut self) { registers.lock().unwrap().b=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_c(&mut self) { registers.lock().unwrap().c=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_d(&mut self) { registers.lock().unwrap().d=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_e(&mut self) { registers.lock().unwrap().e=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_h(&mut self) { registers.lock().unwrap().h=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_l(&mut self) { registers.lock().unwrap().l=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_rn_a(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
 
-    fn ld_hlmn(&mut self, mmu: &mut MMU) { let i: i32= mmu.rb(self.registers.pc); mmu.wb((self.registers.h<<8)+self.registers.l, i); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
-    fn ld_bcma(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.b<<8)+self.registers.c, self.registers.a); self.registers.m=2; self.registers.t=8; }
-    fn ld_dema(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.d<<8)+self.registers.e, self.registers.a); self.registers.m=2; self.registers.t=8; }
-    fn ld_mma(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rw(self.registers.pc); mmu.wb(i, self.registers.a); self.registers.pc+=2; self.registers.m=4; self.registers.t=16; }
-    fn ld_abcm(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.b<<8)+self.registers.c); self.registers.m=2; self.registers.t=8; }
-    fn ld_adem(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.d<<8)+self.registers.e); self.registers.m=2; self.registers.t=8; }
-    fn ld_amm(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rw(self.registers.pc); self.registers.a=mmu.rb(i); self.registers.pc+=2; self.registers.m=4; self.registers.t=16; }
-    fn ld_bcnn(&mut self, mmu: &mut MMU) { self.registers.c=mmu.rb(self.registers.pc); self.registers.b=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
-    fn ld_denn(&mut self, mmu: &mut MMU) { self.registers.e=mmu.rb(self.registers.pc); self.registers.d=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
-    fn ld_hlnn(&mut self, mmu: &mut MMU) { self.registers.l=mmu.rb(self.registers.pc); self.registers.h=mmu.rb(self.registers.pc+1); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
-    fn ld_spnn(&mut self, mmu: &mut MMU) { self.registers.sp=mmu.rw(self.registers.pc); self.registers.pc+=2; self.registers.m=3; self.registers.t=12; }
-    fn ld_hlmm(&mut self, mmu: &mut MMU) { let i: i32=mmu.rw(self.registers.pc); self.registers.pc+=2; self.registers.l=mmu.rb(i); self.registers.h=mmu.rb(i+1); self.registers.m=5; self.registers.t=20; }
-    fn ld_mmhl(&mut self, mmu: &mut MMU) { let i: i32=mmu.rw(self.registers.pc); self.registers.pc+=2; mmu.ww(i,(self.registers.h<<8)+self.registers.l); self.registers.m=5; self.registers.t=20; }
-    fn ld_hlia(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l, self.registers.a); self.registers.l=(self.registers.l+1)&255; if(self.registers.l == 0){ self.registers.h=(self.registers.h+1)&255;} self.registers.m=2; self.registers.t=8; }
-    fn ld_ahli(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.l=(self.registers.l+1)&255; if(self.registers.l == 0){self.registers.h=(self.registers.h+1)&255;} self.registers.m=2; self.registers.t=8; }
-    fn ld_hlda(&mut self, mmu: &mut MMU) { mmu.wb((self.registers.h<<8)+self.registers.l, self.registers.a); self.registers.l=(self.registers.l-1)&255; if(self.registers.l==255){self.registers.h=(self.registers.h-1)&255;} self.registers.m=2; self.registers.t=8; }
-    fn ld_ahld(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); self.registers.l=(self.registers.l-1)&255; if(self.registers.l==255){self.registers.h=(self.registers.h-1)&255;} self.registers.m=2; self.registers.t=8; }
+    fn ld_hlmn(&mut self) { let i: i32= mmu.lock().unwrap().rb(registers.lock().unwrap().pc); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l, i); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_bcma(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().b<<8)+registers.lock().unwrap().c, registers.lock().unwrap().a); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_dema(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().d<<8)+registers.lock().unwrap().e, registers.lock().unwrap().a); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_mma(&mut self) { let i: i32 = mmu.lock().unwrap().rw(registers.lock().unwrap().pc); mmu.lock().unwrap().wb(i, registers.lock().unwrap().a); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn ld_abcm(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().b<<8)+registers.lock().unwrap().c); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_adem(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().d<<8)+registers.lock().unwrap().e); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_amm(&mut self) { let i: i32 = mmu.lock().unwrap().rw(registers.lock().unwrap().pc); registers.lock().unwrap().a=mmu.lock().unwrap().rb(i); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn ld_bcnn(&mut self) { registers.lock().unwrap().c=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().b=mmu.lock().unwrap().rb(registers.lock().unwrap().pc+1); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_denn(&mut self) { registers.lock().unwrap().e=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().d=mmu.lock().unwrap().rb(registers.lock().unwrap().pc+1); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_hlnn(&mut self) { registers.lock().unwrap().l=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().h=mmu.lock().unwrap().rb(registers.lock().unwrap().pc+1); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_spnn(&mut self) { registers.lock().unwrap().sp=mmu.lock().unwrap().rw(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=2; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_hlmm(&mut self) { let i: i32=mmu.lock().unwrap().rw(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=2; registers.lock().unwrap().l=mmu.lock().unwrap().rb(i); registers.lock().unwrap().h=mmu.lock().unwrap().rb(i+1); registers.lock().unwrap().m=5; registers.lock().unwrap().t=20; }
+    fn ld_mmhl(&mut self) { let i: i32=mmu.lock().unwrap().rw(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=2; mmu.lock().unwrap().ww(i,(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().m=5; registers.lock().unwrap().t=20; }
+    fn ld_hlia(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l, registers.lock().unwrap().a); registers.lock().unwrap().l=(registers.lock().unwrap().l+1)&255; if(registers.lock().unwrap().l == 0){ registers.lock().unwrap().h=(registers.lock().unwrap().h+1)&255;} registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_ahli(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().l=(registers.lock().unwrap().l+1)&255; if(registers.lock().unwrap().l == 0){registers.lock().unwrap().h=(registers.lock().unwrap().h+1)&255;} registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlda(&mut self) { mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l, registers.lock().unwrap().a); registers.lock().unwrap().l=(registers.lock().unwrap().l-1)&255; if(registers.lock().unwrap().l==255){registers.lock().unwrap().h=(registers.lock().unwrap().h-1)&255;} registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_ahld(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().l=(registers.lock().unwrap().l-1)&255; if(registers.lock().unwrap().l==255){registers.lock().unwrap().h=(registers.lock().unwrap().h-1)&255;} registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
 
-    fn ld_aion(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rb(self.registers.pc); self.registers.a=mmu.rb(0xFF00+i); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
-    fn ld_iona(&mut self, mmu: &mut MMU) { let i: i32 = mmu.rb(self.registers.pc); mmu.wb(0xFF00+i,self.registers.a); self.registers.pc+=1; self.registers.m=3; self.registers.t=12; }
-    fn ld_aioc(&mut self, mmu: &mut MMU) { self.registers.a=mmu.rb(0xFF00+self.registers.c); self.registers.m=2; self.registers.t=8; }
-    fn ld_ioca(&mut self, mmu: &mut MMU) { mmu.wb(0xFF00+self.registers.c,self.registers.a); self.registers.m=2; self.registers.t=8; }
-    fn ld_hlspn(&mut self, mmu: &mut MMU) { let mut i: i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; i+=self.registers.sp; self.registers.h=(i>>8)&255; self.registers.l=i&255; self.registers.m=3; self.registers.t=12; }
+    fn ld_aion(&mut self) { let i: i32 = mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().a=mmu.lock().unwrap().rb(0xFF00+i); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_iona(&mut self) { let i: i32 = mmu.lock().unwrap().rb(registers.lock().unwrap().pc); mmu.lock().unwrap().wb(0xFF00+i,registers.lock().unwrap().a); registers.lock().unwrap().pc+=1; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn ld_aioc(&mut self) { registers.lock().unwrap().a=mmu.lock().unwrap().rb(0xFF00+registers.lock().unwrap().c); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_ioca(&mut self) { mmu.lock().unwrap().wb(0xFF00+registers.lock().unwrap().c,registers.lock().unwrap().a); registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn ld_hlspn(&mut self) { let mut i: i32=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); if(i>127){i=-((!i+1)&255);} registers.lock().unwrap().pc+=1; i+=registers.lock().unwrap().sp; registers.lock().unwrap().h=(i>>8)&255; registers.lock().unwrap().l=i&255; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
 
-    fn swap_r_b(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.b; self.registers.b=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_c(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.c; self.registers.c=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_d(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.d; self.registers.d=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_e(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.e; self.registers.e=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_h(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.h; self.registers.h=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_l(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.l; self.registers.l=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
-    fn swap_r_a(&mut self, mmu: &mut MMU) { let tr:i32=self.registers.a; self.registers.a=mmu.rb((self.registers.h<<8)+self.registers.l); mmu.wb((self.registers.h<<8)+self.registers.l,tr); self.registers.m=4; self.registers.t=16; }
+    fn swap_r_b(&mut self) { let tr:i32=registers.lock().unwrap().b; registers.lock().unwrap().b=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_c(&mut self) { let tr:i32=registers.lock().unwrap().c; registers.lock().unwrap().c=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_d(&mut self) { let tr:i32=registers.lock().unwrap().d; registers.lock().unwrap().d=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_e(&mut self) { let tr:i32=registers.lock().unwrap().e; registers.lock().unwrap().e=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_h(&mut self) { let tr:i32=registers.lock().unwrap().h; registers.lock().unwrap().h=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_l(&mut self) { let tr:i32=registers.lock().unwrap().l; registers.lock().unwrap().l=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
+    fn swap_r_a(&mut self) { let tr:i32=registers.lock().unwrap().a; registers.lock().unwrap().a=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); mmu.lock().unwrap().wb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l,tr); registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
     /*--- Data processing ---*/
-    fn addr_b(&mut self) { self.registers.a+=self.registers.b; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_c(&mut self) { self.registers.a+=self.registers.c; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_d(&mut self) { self.registers.a+=self.registers.d; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_e(&mut self) { self.registers.a+=self.registers.e; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_h(&mut self) { self.registers.a+=self.registers.h; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_l(&mut self) { self.registers.a+=self.registers.l; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addr_a(&mut self) { self.registers.a+=self.registers.a; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    fn addhl(&mut self, mmu: &mut MMU) { let l:i32 = self.registers.l; self.registers.a+=mmu.rb((self.registers.h<<8)+l); let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255){self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
-    fn addn(&mut self, mmu: &mut MMU) { self.registers.a+=mmu.rb(self.registers.pc); self.registers.pc+=1; let i:i32 = self.registers.a; self.fzz(i); if(self.registers.a>255){self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
-    fn addhlbc(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.b<<8)+self.registers.c; if(hl>65535){self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
-    fn addhlde(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.d<<8)+self.registers.e; if(hl>65535) { self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
-    fn addhlhl(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=(self.registers.h<<8)+self.registers.l; if(hl>65535) {self.registers.f|=0x10;} else{ self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
-    fn addhlsp(&mut self) { let mut hl:i32=(self.registers.h<<8)+self.registers.l; hl+=self.registers.sp; if(hl>65535){ self.registers.f|=0x10;} else {self.registers.f&=0xEF;} self.registers.h=(hl>>8)&255; self.registers.l=hl&255; self.registers.m=3; self.registers.t=12; }
-    fn addspn(&mut self, mmu: &mut MMU) { let mut i:i32=mmu.rb(self.registers.pc); if(i>127){i=-((!i+1)&255);} self.registers.pc+=1; self.registers.sp+=i; self.registers.m=4; self.registers.t=16; }
+    fn addr_b(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().b; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_c(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().c; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_d(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().d; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_e(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().e; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_h(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().h; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_l(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().l; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addr_a(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().a; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    fn addhl(&mut self) { let l:i32 = registers.lock().unwrap().l; registers.lock().unwrap().a+=mmu.lock().unwrap().rb((registers.lock().unwrap().h<<8)+l); let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255){registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn addn(&mut self) { registers.lock().unwrap().a+=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; let i:i32 = registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255){registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    fn addhlbc(&mut self) { let mut hl:i32=(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l; hl+=(registers.lock().unwrap().b<<8)+registers.lock().unwrap().c; if(hl>65535){registers.lock().unwrap().f|=0x10;} else{ registers.lock().unwrap().f&=0xEF;} registers.lock().unwrap().h=(hl>>8)&255; registers.lock().unwrap().l=hl&255; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn addhlde(&mut self) { let mut hl:i32=(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l; hl+=(registers.lock().unwrap().d<<8)+registers.lock().unwrap().e; if(hl>65535) { registers.lock().unwrap().f|=0x10;} else{ registers.lock().unwrap().f&=0xEF;} registers.lock().unwrap().h=(hl>>8)&255; registers.lock().unwrap().l=hl&255; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn addhlhl(&mut self) { let mut hl:i32=(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l; hl+=(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l; if(hl>65535) {registers.lock().unwrap().f|=0x10;} else{ registers.lock().unwrap().f&=0xEF;} registers.lock().unwrap().h=(hl>>8)&255; registers.lock().unwrap().l=hl&255; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn addhlsp(&mut self) { let mut hl:i32=(registers.lock().unwrap().h<<8)+registers.lock().unwrap().l; hl+=registers.lock().unwrap().sp; if(hl>65535){ registers.lock().unwrap().f|=0x10;} else {registers.lock().unwrap().f&=0xEF;} registers.lock().unwrap().h=(hl>>8)&255; registers.lock().unwrap().l=hl&255; registers.lock().unwrap().m=3; registers.lock().unwrap().t=12; }
+    fn addspn(&mut self) { let mut i:i32=mmu.lock().unwrap().rb(registers.lock().unwrap().pc); if(i>127){i=-((!i+1)&255);} registers.lock().unwrap().pc+=1; registers.lock().unwrap().sp+=i; registers.lock().unwrap().m=4; registers.lock().unwrap().t=16; }
 
-    //fn adcr_b(&mut self) { self.registers.a+=self.registers.b; self.registers.a+= if(self.registers.f&0x10 > 0) {1} else{0}; let i:i32= self.registers.a; self.fzz(i); if(self.registers.a>255) {self.registers.f|=0x10;} self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_c(&mut self) { self.registers.a+=self.registers.c; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_d(&mut self) { self.registers.a+=self.registers.d; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_e(&mut self) { self.registers.a+=self.registers.e; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_h(&mut self) { self.registers.a+=self.registers.h; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_l(&mut self) { self.registers.a+=self.registers.l; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adcr_a(&mut self) { self.registers.a+=self.registers.a; self.registers.a+=if(self.registers.f&0x10 > 0) {1} else {0}; self.fzz(self.registers.a); if(self.registers.a>255) self.registers.f|=0x10; self.registers.a&=255; self.registers.m=1; self.registers.t=4; }
-    //fn adchl(&mut self) { self.registers.a+=MMU.rb((self.registers.h<<8)+self.registers.l); self.registers.a+= if(self.registers.f&0x10 > 0){1}else {0}; self.fzz(self.registers.a); if(self.registers.a>255) {self.registers.f|=0x10}; self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
-    //fn adcn(&mut self) { self.registers.a+=MMU.rb(self.registers.pc); self.registers.pc+=1; self.registers.a+=if(self.registers.f&0x10 > 0){1}else {0}; self.fzz(self.registers.a); if(self.registers.a>255) {self.registers.f|=0x10}; self.registers.a&=255; self.registers.m=2; self.registers.t=8; }
+    //fn adcr_b(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().b; registers.lock().unwrap().a+= if(registers.lock().unwrap().f&0x10 > 0) {1} else{0}; let i:i32= registers.lock().unwrap().a; self.fzz(i); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10;} registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_c(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().c; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_d(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().d; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_e(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().e; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_h(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().h; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_l(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().l; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adcr_a(&mut self) { registers.lock().unwrap().a+=registers.lock().unwrap().a; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0) {1} else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) registers.lock().unwrap().f|=0x10; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=1; registers.lock().unwrap().t=4; }
+    //fn adchl(&mut self) { registers.lock().unwrap().a+=MMU.rb((registers.lock().unwrap().h<<8)+registers.lock().unwrap().l); registers.lock().unwrap().a+= if(registers.lock().unwrap().f&0x10 > 0){1}else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10}; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
+    //fn adcn(&mut self) { registers.lock().unwrap().a+=MMU.rb(registers.lock().unwrap().pc); registers.lock().unwrap().pc+=1; registers.lock().unwrap().a+=if(registers.lock().unwrap().f&0x10 > 0){1}else {0}; self.fzz(registers.lock().unwrap().a); if(registers.lock().unwrap().a>255) {registers.lock().unwrap().f|=0x10}; registers.lock().unwrap().a&=255; registers.lock().unwrap().m=2; registers.lock().unwrap().t=8; }
 
 }
 
 fn main() {
-    let clock = Clock {
-        m: 0,
-        t: 0,
-    };
-
-    let registers = Registers {
-        a: 0,
-        b: 0,
-        c: 0,
-        d: 0,
-        e: 0,
-        h: 0,
-        l: 0,
-        f: 0,
-        pc: 0,
-        sp: 0,
-        m: 0,
-        t: 0,
-    };
-
-    let mut cpu = CPU {
-        clock: clock,
-        registers: registers,
-    };
-
-
-
-    println!("cpu contains clock with {:?} and {:?}", cpu.clock.m, cpu.clock.t);
-    println!("cpu contains registers with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", cpu.registers.a, cpu.registers.b, cpu.registers.c, cpu.registers.d, cpu.registers.e, cpu.registers.h, cpu.registers.l, cpu.registers.f, cpu.registers.pc, cpu.registers.sp, cpu.registers.m, cpu.registers.t);
+    println!("cpu contains clock with {:?} and {:?}", clock.lock().unwrap().m, clock.lock().unwrap().t);
+    println!("cpu contains registers.lock().unwrap() with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", registers.lock().unwrap().a, registers.lock().unwrap().b, registers.lock().unwrap().c, registers.lock().unwrap().d, registers.lock().unwrap().e, registers.lock().unwrap().h, registers.lock().unwrap().l, registers.lock().unwrap().f, registers.lock().unwrap().pc, registers.lock().unwrap().sp, registers.lock().unwrap().m, registers.lock().unwrap().t);
     println!("Adding E to A");
-    cpu.addr_e();
-    println!("cpu contains registers with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", cpu.registers.a, cpu.registers.b, cpu.registers.c, cpu.registers.d, cpu.registers.e, cpu.registers.h, cpu.registers.l, cpu.registers.f, cpu.registers.pc, cpu.registers.sp, cpu.registers.m, cpu.registers.t);
+    cpu.lock().unwrap().addr_e();
+    println!("cpu contains registers.lock().unwrap() with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", registers.lock().unwrap().a, registers.lock().unwrap().b, registers.lock().unwrap().c, registers.lock().unwrap().d, registers.lock().unwrap().e, registers.lock().unwrap().h, registers.lock().unwrap().l, registers.lock().unwrap().f, registers.lock().unwrap().pc, registers.lock().unwrap().sp, registers.lock().unwrap().m, registers.lock().unwrap().t);
     //cpu.cpr_b();
     println!("Running comparison of B and A");
-    println!("cpu contains registers with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", cpu.registers.a, cpu.registers.b, cpu.registers.c, cpu.registers.d, cpu.registers.e, cpu.registers.h, cpu.registers.l, cpu.registers.f, cpu.registers.pc, cpu.registers.sp, cpu.registers.m, cpu.registers.t);
+    println!("cpu contains registers.lock().unwrap() with a:{:?}, b:{:?}, c:{:?}, d:{:?}, e:{:?}, h:{:?}, l:{:?}, f:{:?}, pc:{:?}, sp:{:?}, m:{:?} and t:{:?}", registers.lock().unwrap().a, registers.lock().unwrap().b, registers.lock().unwrap().c, registers.lock().unwrap().d, registers.lock().unwrap().e, registers.lock().unwrap().h, registers.lock().unwrap().l, registers.lock().unwrap().f, registers.lock().unwrap().pc, registers.lock().unwrap().sp, registers.lock().unwrap().m, registers.lock().unwrap().t);
 }
