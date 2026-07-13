@@ -1,7 +1,7 @@
 [package]
 name = "rgb"
-version = "0.1.0"
-authors = ["Ramon Huidobro <ramon.martin.huidobro@gmail.com>"]
+version = "0.0.1"
+authors = ["Carmen Huidobro <hola@carmnh.dev>"]
+edition = "2021"
 
 [dependencies]
-lazy_static = "1.2.0"
