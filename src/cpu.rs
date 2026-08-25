@@ -227,21 +227,21 @@ pub mod ops {
         static U: Instr = unhandled;
         static TABLE: [Instr; 256] = [
             // 0x00-0x07
-            nop, ld_bc_nn, ld_bcm_a, U, U, U, ld_b_n, U,
+            nop, ld_bc_nn, ld_bcm_a, U, inc_b, dec_b, ld_b_n, U,
             // 0x08-0x0F
-            ld_nn_sp, U, ld_a_bcm, U, U, U, ld_c_n, U,
+            ld_nn_sp, U, ld_a_bcm, U, inc_c, dec_c, ld_c_n, U,
             // 0x10-0x17
-            U, ld_de_nn, ld_dem_a, U, U, U, ld_d_n, U,
+            U, ld_de_nn, ld_dem_a, U, inc_d, dec_d, ld_d_n, U,
             // 0x18-0x1F
-            U, U, ld_a_dem, U, U, U, ld_e_n, U,
+            U, U, ld_a_dem, U, inc_e, dec_e, ld_e_n, U,
             // 0x20-0x27
-            U, ld_hl_nn, ldi_hlm_a, U, U, U, ld_h_n, U,
+            U, ld_hl_nn, ldi_hlm_a, U, inc_h, dec_h, ld_h_n, U,
             // 0x28-0x2F
-            U, U, ldi_a_hlm, U, U, U, ld_l_n, U,
+            U, U, ldi_a_hlm, U, inc_l, dec_l, ld_l_n, U,
             // 0x30-0x37
-            U, ld_sp_nn, ldd_hlm_a, U, U, U, ld_hlm_n, U,
+            U, ld_sp_nn, ldd_hlm_a, U, inc_hlm, dec_hlm, ld_hlm_n, U,
             // 0x38-0x3F
-            U, U, ldd_a_hlm, U, U, U, ld_a_n, U,
+            U, U, ldd_a_hlm, U, inc_a, dec_a, ld_a_n, U,
             // 0x40-0x47 = LD B,*
             ld_b_b, ld_b_c, ld_b_d, ld_b_e, ld_b_h, ld_b_l, ld_b_hlm, ld_b_a,
             // 0x48-0x4F = LD C,*
@@ -258,27 +258,38 @@ pub mod ops {
             ld_hlm_b, ld_hlm_c, ld_hlm_d, ld_hlm_e, ld_hlm_h, ld_hlm_l, U, ld_hlm_a,
             // 0x78-0x7F = LD A,*
             ld_a_b, ld_a_c, ld_a_d, ld_a_e, ld_a_h, ld_a_l, ld_a_hlm, ld_a_a,
-            // 0x80-0xDF: later phases (arithmetic, jumps, CB prefix)
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
-            U, U, U, U, U, U, U, U,
+            // 0x80-0x87 = ADD A,r
+            add_a_b, add_a_c, add_a_d, add_a_e, add_a_h, add_a_l, add_a_hlm, add_a_a,
+            // 0x88-0x8F = ADC A,r
+            adc_a_b, adc_a_c, adc_a_d, adc_a_e, adc_a_h, adc_a_l, adc_a_hlm, adc_a_a,
+            // 0x90-0x97 = SUB A,r
+            sub_a_b, sub_a_c, sub_a_d, sub_a_e, sub_a_h, sub_a_l, sub_a_hlm, sub_a_a,
+            // 0x98-0x9F = SBC A,r
+            sbc_a_b, sbc_a_c, sbc_a_d, sbc_a_e, sbc_a_h, sbc_a_l, sbc_a_hlm, sbc_a_a,
+            // 0xA0-0xA7 = AND A,r
+            and_a_b, and_a_c, and_a_d, and_a_e, and_a_h, and_a_l, and_a_hlm, and_a_a,
+            // 0xA8-0xAF = XOR A,r
+            xor_a_b, xor_a_c, xor_a_d, xor_a_e, xor_a_h, xor_a_l, xor_a_hlm, xor_a_a,
+            // 0xB0-0xB7 = OR A,r
+            or_a_b, or_a_c, or_a_d, or_a_e, or_a_h, or_a_l, or_a_hlm, or_a_a,
+            // 0xB8-0xBF = CP A,r
+            cp_a_b, cp_a_c, cp_a_d, cp_a_e, cp_a_h, cp_a_l, cp_a_hlm, cp_a_a,
+            // 0xC0-0xC7
+            U, U, U, U, U, U, add_a_n, U,
+            // 0xC8-0xCF
+            U, U, U, U, U, U, adc_a_n, U,
+            // 0xD0-0xD7
+            U, U, U, U, U, U, sub_a_n, U,
+            // 0xD8-0xDF
+            U, U, U, U, U, U, sbc_a_n, U,
             // 0xE0-0xE7
-            ldh_n_a, U, ldh_c_a, U, U, U, U, U,
+            ldh_n_a, U, ldh_c_a, U, U, U, and_a_n, U,
             // 0xE8-0xEF
-            U, U, ld_nn_a, U, U, U, U, U,
+            U, U, ld_nn_a, U, U, U, xor_a_n, U,
             // 0xF0-0xF7
-            ldh_a_n, U, ldh_a_c, U, U, U, U, U,
+            ldh_a_n, U, ldh_a_c, U, U, U, or_a_n, U,
             // 0xF8-0xFF
-            ld_hl_sp_n, ld_sp_hl, ld_a_nn, U, U, U, U, U,
+            ld_hl_sp_n, ld_sp_hl, ld_a_nn, U, U, U, cp_a_n, U,
         ];
         &TABLE
     }
@@ -566,6 +577,240 @@ pub mod ops {
         2
     }
 
+    // --- 8-bit ALU core ---
+
+    fn alu_add(gb: &mut GameBoy, val: u8, carry: bool) {
+        let a = gb.cpu.a;
+        let c = if carry && gb.cpu.flag_c() { 1 } else { 0 };
+        let result = a as u16 + val as u16 + c as u16;
+        let r8 = result as u8;
+        gb.cpu.set_flag_z(r8 == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h((a & 0x0F) + (val & 0x0F) + c > 0x0F);
+        gb.cpu.set_flag_c(result > 0xFF);
+        gb.cpu.a = r8;
+    }
+
+    fn alu_sub(gb: &mut GameBoy, val: u8, carry: bool) {
+        let a = gb.cpu.a;
+        let c = if carry && gb.cpu.flag_c() { 1 } else { 0 };
+        let result = (a as i16) - (val as i16) - (c as i16);
+        let r8 = result as u8;
+        gb.cpu.set_flag_z(r8 == 0);
+        gb.cpu.set_flag_n(true);
+        gb.cpu.set_flag_h((a & 0x0F) < (val & 0x0F) + c);
+        gb.cpu.set_flag_c(result < 0);
+        gb.cpu.a = r8;
+    }
+
+    fn alu_and(gb: &mut GameBoy, val: u8, _carry: bool) {
+        gb.cpu.a &= val;
+        gb.cpu.set_flag_z(gb.cpu.a == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(true);
+        gb.cpu.set_flag_c(false);
+    }
+
+    fn alu_or(gb: &mut GameBoy, val: u8, _carry: bool) {
+        gb.cpu.a |= val;
+        gb.cpu.set_flag_z(gb.cpu.a == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(false);
+    }
+
+    fn alu_xor(gb: &mut GameBoy, val: u8, _carry: bool) {
+        gb.cpu.a ^= val;
+        gb.cpu.set_flag_z(gb.cpu.a == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(false);
+    }
+
+    fn alu_cp(gb: &mut GameBoy, val: u8, _carry: bool) {
+        let a = gb.cpu.a;
+        let result = (a as i16) - (val as i16);
+        gb.cpu.set_flag_z(result as u8 == 0);
+        gb.cpu.set_flag_n(true);
+        gb.cpu.set_flag_h((a & 0x0F) < (val & 0x0F));
+        gb.cpu.set_flag_c(result < 0);
+    }
+
+    fn alu_inc(gb: &mut GameBoy, val: u8) -> u8 {
+        let r = val.wrapping_add(1);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h((val & 0x0F) == 0x0F);
+        r
+    }
+
+    fn alu_dec(gb: &mut GameBoy, val: u8) -> u8 {
+        let r = val.wrapping_sub(1);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(true);
+        gb.cpu.set_flag_h((val & 0x0F) == 0);
+        r
+    }
+
+    // --- ALU handler generators ---
+
+    macro_rules! alu_r {
+        ($name:ident, $alu:ident, $src:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$src;
+                $alu(gb, v, false);
+                1
+            }
+        };
+        ($name:ident, $alu:ident, $src:ident, carry) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$src;
+                $alu(gb, v, true);
+                1
+            }
+        };
+    }
+
+    macro_rules! alu_hlm {
+        ($name:ident, $alu:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                $alu(gb, v, false);
+                2
+            }
+        };
+        ($name:ident, $alu:ident, carry) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                $alu(gb, v, true);
+                2
+            }
+        };
+    }
+
+    macro_rules! alu_n {
+        ($name:ident, $alu:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = fetch_u8(gb);
+                $alu(gb, v, false);
+                2
+            }
+        };
+        ($name:ident, $alu:ident, carry) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = fetch_u8(gb);
+                $alu(gb, v, true);
+                2
+            }
+        };
+    }
+
+    macro_rules! inc_r {
+        ($name:ident, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$reg;
+                let r = alu_inc(gb, v);
+                gb.cpu.$reg = r;
+                1
+            }
+        };
+    }
+
+    macro_rules! dec_r {
+        ($name:ident, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$reg;
+                let r = alu_dec(gb, v);
+                gb.cpu.$reg = r;
+                1
+            }
+        };
+    }
+
+    // ADD
+    alu_r!(add_a_b, alu_add, b); alu_r!(add_a_c, alu_add, c); alu_r!(add_a_d, alu_add, d);
+    alu_r!(add_a_e, alu_add, e); alu_r!(add_a_h, alu_add, h); alu_r!(add_a_l, alu_add, l);
+    alu_r!(add_a_a, alu_add, a);
+    alu_hlm!(add_a_hlm, alu_add);
+    alu_n!(add_a_n, alu_add);
+
+    // ADC
+    alu_r!(adc_a_b, alu_add, b, carry); alu_r!(adc_a_c, alu_add, c, carry);
+    alu_r!(adc_a_d, alu_add, d, carry); alu_r!(adc_a_e, alu_add, e, carry);
+    alu_r!(adc_a_h, alu_add, h, carry); alu_r!(adc_a_l, alu_add, l, carry);
+    alu_r!(adc_a_a, alu_add, a, carry);
+    alu_hlm!(adc_a_hlm, alu_add, carry);
+    alu_n!(adc_a_n, alu_add, carry);
+
+    // SUB
+    alu_r!(sub_a_b, alu_sub, b); alu_r!(sub_a_c, alu_sub, c); alu_r!(sub_a_d, alu_sub, d);
+    alu_r!(sub_a_e, alu_sub, e); alu_r!(sub_a_h, alu_sub, h); alu_r!(sub_a_l, alu_sub, l);
+    alu_r!(sub_a_a, alu_sub, a);
+    alu_hlm!(sub_a_hlm, alu_sub);
+    alu_n!(sub_a_n, alu_sub);
+
+    // SBC
+    alu_r!(sbc_a_b, alu_sub, b, carry); alu_r!(sbc_a_c, alu_sub, c, carry);
+    alu_r!(sbc_a_d, alu_sub, d, carry); alu_r!(sbc_a_e, alu_sub, e, carry);
+    alu_r!(sbc_a_h, alu_sub, h, carry); alu_r!(sbc_a_l, alu_sub, l, carry);
+    alu_r!(sbc_a_a, alu_sub, a, carry);
+    alu_hlm!(sbc_a_hlm, alu_sub, carry);
+    alu_n!(sbc_a_n, alu_sub, carry);
+
+    // AND
+    alu_r!(and_a_b, alu_and, b); alu_r!(and_a_c, alu_and, c); alu_r!(and_a_d, alu_and, d);
+    alu_r!(and_a_e, alu_and, e); alu_r!(and_a_h, alu_and, h); alu_r!(and_a_l, alu_and, l);
+    alu_r!(and_a_a, alu_and, a);
+    alu_hlm!(and_a_hlm, alu_and);
+    alu_n!(and_a_n, alu_and);
+
+    // XOR
+    alu_r!(xor_a_b, alu_xor, b); alu_r!(xor_a_c, alu_xor, c); alu_r!(xor_a_d, alu_xor, d);
+    alu_r!(xor_a_e, alu_xor, e); alu_r!(xor_a_h, alu_xor, h); alu_r!(xor_a_l, alu_xor, l);
+    alu_r!(xor_a_a, alu_xor, a);
+    alu_hlm!(xor_a_hlm, alu_xor);
+    alu_n!(xor_a_n, alu_xor);
+
+    // OR
+    alu_r!(or_a_b, alu_or, b); alu_r!(or_a_c, alu_or, c); alu_r!(or_a_d, alu_or, d);
+    alu_r!(or_a_e, alu_or, e); alu_r!(or_a_h, alu_or, h); alu_r!(or_a_l, alu_or, l);
+    alu_r!(or_a_a, alu_or, a);
+    alu_hlm!(or_a_hlm, alu_or);
+    alu_n!(or_a_n, alu_or);
+
+    // CP
+    alu_r!(cp_a_b, alu_cp, b); alu_r!(cp_a_c, alu_cp, c); alu_r!(cp_a_d, alu_cp, d);
+    alu_r!(cp_a_e, alu_cp, e); alu_r!(cp_a_h, alu_cp, h); alu_r!(cp_a_l, alu_cp, l);
+    alu_r!(cp_a_a, alu_cp, a);
+    alu_hlm!(cp_a_hlm, alu_cp);
+    alu_n!(cp_a_n, alu_cp);
+
+    // INC
+    inc_r!(inc_b, b); inc_r!(inc_c, c); inc_r!(inc_d, d); inc_r!(inc_e, e);
+    inc_r!(inc_h, h); inc_r!(inc_l, l); inc_r!(inc_a, a);
+
+    fn inc_hlm(gb: &mut GameBoy) -> u32 {
+        let addr = hl_addr(gb);
+        let v = gb.mmu.read(addr);
+        let r = alu_inc(gb, v);
+        gb.mmu.write(addr, r);
+        3
+    }
+
+    // DEC
+    dec_r!(dec_b, b); dec_r!(dec_c, c); dec_r!(dec_d, d); dec_r!(dec_e, e);
+    dec_r!(dec_h, h); dec_r!(dec_l, l); dec_r!(dec_a, a);
+
+    fn dec_hlm(gb: &mut GameBoy) -> u32 {
+        let addr = hl_addr(gb);
+        let v = gb.mmu.read(addr);
+        let r = alu_dec(gb, v);
+        gb.mmu.write(addr, r);
+        3
+    }
+
     #[cfg(test)]
     mod tests {
         use crate::cartridge::Cartridge;
@@ -658,6 +903,154 @@ pub mod ops {
             assert_eq!(gb.step(), 5);
             assert_eq!(gb.mmu.read(0xD000), 0xFE);
             assert_eq!(gb.mmu.read(0xD001), 0xFF);
+        }
+
+        // --- ALU tests ---
+
+        #[test]
+        fn add_a_b_sets_carry_and_halfcarry() {
+            let mut gb = gb_with(&[0x80]); // ADD A,B
+            gb.cpu.a = 0x3A;
+            gb.cpu.b = 0xC6;
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.a, 0x00);
+            assert!(gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn adc_a_n_uses_carry() {
+            let mut gb = gb_with(&[0xCE, 0x3C]); // ADC A,0x3C
+            gb.cpu.a = 0xE1;
+            gb.cpu.set_flag_c(true);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.a, 0x1E);
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn sub_a_b_borrow_flags() {
+            let mut gb = gb_with(&[0x90]); // SUB A,B
+            gb.cpu.a = 0x3E;
+            gb.cpu.b = 0x3E;
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.a, 0x00);
+            assert!(gb.cpu.flag_z());
+            assert!(gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+            assert!(!gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn sub_a_n_halfcarry_and_carry() {
+            let mut gb = gb_with(&[0xD6, 0x40]); // SUB A,0x40
+            gb.cpu.a = 0x00;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0xC0);
+            assert!(!gb.cpu.flag_z());
+            assert!(gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn sbc_a_b_includes_carry() {
+            let mut gb = gb_with(&[0x98]); // SBC A,B
+            gb.cpu.a = 0x10;
+            gb.cpu.b = 0x0F;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x00);
+            assert!(gb.cpu.flag_z());
+            assert!(gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn and_sets_half_carry() {
+            let mut gb = gb_with(&[0xA7]); // AND A
+            gb.cpu.a = 0x5A;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x5A);
+            assert!(!gb.cpu.flag_z());
+            assert!(gb.cpu.flag_h());
+            assert!(!gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_n());
+        }
+
+        #[test]
+        fn xor_a_clears_a() {
+            let mut gb = gb_with(&[0xAF]); // XOR A
+            gb.cpu.a = 0xFF;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0);
+            assert!(gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_h());
+            assert!(!gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn or_a_b_result() {
+            let mut gb = gb_with(&[0xB0]); // OR A,B
+            gb.cpu.a = 0x5A;
+            gb.cpu.b = 0x03;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x5B);
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+        }
+
+        #[test]
+        fn cp_leaves_a_and_sets_flags() {
+            let mut gb = gb_with(&[0xB8]); // CP A,B
+            gb.cpu.a = 0x3C;
+            gb.cpu.b = 0x2F;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x3C); // unchanged
+            assert!(!gb.cpu.flag_z());
+            assert!(gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h()); // 0xC < 0xF → borrow from bit 4
+            assert!(!gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn inc_b_zero_flag_and_half_carry() {
+            let mut gb = gb_with(&[0x04]); // INC B
+            gb.cpu.b = 0xFF;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.b, 0x00);
+            assert!(gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+            assert!(gb.cpu.flag_c()); // INC preserves C
+        }
+
+        #[test]
+        fn dec_b_borrow_from_bit4() {
+            let mut gb = gb_with(&[0x05]); // DEC B
+            gb.cpu.b = 0x10;
+            gb.step();
+            assert_eq!(gb.cpu.b, 0x0F);
+            assert!(!gb.cpu.flag_z());
+            assert!(gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn inc_hlm_memory() {
+            let mut gb = gb_with(&[0x34]); // INC (HL)
+            gb.cpu.set_hl(0xC000);
+            gb.mmu.write(0xC000, 0x50);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.mmu.read(0xC000), 0x51);
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_h());
         }
     }
 }
