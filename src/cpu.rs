@@ -25,6 +25,8 @@ pub struct Cpu {
     pub pc: u16,
     /// Stack pointer — grows downward on the Game Boy.
     pub sp: u16,
+    /// Interrupt master enable flag. Set by EI/RETI, cleared by DI.
+    pub ime: bool,
 }
 
 impl Cpu {
@@ -44,6 +46,7 @@ impl Cpu {
             l: 0x4D,
             pc: 0x0100,
             sp: 0xFFFE,
+            ime: false,
         }
     }
 
@@ -227,21 +230,21 @@ pub mod ops {
         static U: Instr = unhandled;
         static TABLE: [Instr; 256] = [
             // 0x00-0x07
-            nop, ld_bc_nn, ld_bcm_a, U, inc_b, dec_b, ld_b_n, U,
+            nop, ld_bc_nn, ld_bcm_a, inc_bc, inc_b, dec_b, ld_b_n, rlca,
             // 0x08-0x0F
-            ld_nn_sp, U, ld_a_bcm, U, inc_c, dec_c, ld_c_n, U,
+            ld_nn_sp, add_hl_bc, ld_a_bcm, dec_bc, inc_c, dec_c, ld_c_n, rrca,
             // 0x10-0x17
-            U, ld_de_nn, ld_dem_a, U, inc_d, dec_d, ld_d_n, U,
+            stop, ld_de_nn, ld_dem_a, inc_de, inc_d, dec_d, ld_d_n, rla,
             // 0x18-0x1F
-            U, U, ld_a_dem, U, inc_e, dec_e, ld_e_n, U,
+            jr_n, add_hl_de, ld_a_dem, dec_de, inc_e, dec_e, ld_e_n, rra,
             // 0x20-0x27
-            U, ld_hl_nn, ldi_hlm_a, U, inc_h, dec_h, ld_h_n, U,
+            jr_nz, ld_hl_nn, ldi_hlm_a, inc_hl, inc_h, dec_h, ld_h_n, daa,
             // 0x28-0x2F
-            U, U, ldi_a_hlm, U, inc_l, dec_l, ld_l_n, U,
+            jr_z, add_hl_hl, ldi_a_hlm, dec_hl, inc_l, dec_l, ld_l_n, cpl,
             // 0x30-0x37
-            U, ld_sp_nn, ldd_hlm_a, U, inc_hlm, dec_hlm, ld_hlm_n, U,
+            jr_nc, ld_sp_nn, ldd_hlm_a, inc_sp, inc_hlm, dec_hlm, ld_hlm_n, scf,
             // 0x38-0x3F
-            U, U, ldd_a_hlm, U, inc_a, dec_a, ld_a_n, U,
+            jr_c, add_hl_sp, ldd_a_hlm, dec_sp, inc_a, dec_a, ld_a_n, ccf,
             // 0x40-0x47 = LD B,*
             ld_b_b, ld_b_c, ld_b_d, ld_b_e, ld_b_h, ld_b_l, ld_b_hlm, ld_b_a,
             // 0x48-0x4F = LD C,*
@@ -255,7 +258,7 @@ pub mod ops {
             // 0x68-0x6F = LD L,*
             ld_l_b, ld_l_c, ld_l_d, ld_l_e, ld_l_h, ld_l_l, ld_l_hlm, ld_l_a,
             // 0x70-0x77 = LD (HL),*  (0x76 = HALT, unimplemented for now)
-            ld_hlm_b, ld_hlm_c, ld_hlm_d, ld_hlm_e, ld_hlm_h, ld_hlm_l, U, ld_hlm_a,
+            ld_hlm_b, ld_hlm_c, ld_hlm_d, ld_hlm_e, ld_hlm_h, ld_hlm_l, halt, ld_hlm_a,
             // 0x78-0x7F = LD A,*
             ld_a_b, ld_a_c, ld_a_d, ld_a_e, ld_a_h, ld_a_l, ld_a_hlm, ld_a_a,
             // 0x80-0x87 = ADD A,r
@@ -275,21 +278,21 @@ pub mod ops {
             // 0xB8-0xBF = CP A,r
             cp_a_b, cp_a_c, cp_a_d, cp_a_e, cp_a_h, cp_a_l, cp_a_hlm, cp_a_a,
             // 0xC0-0xC7
-            U, U, U, U, U, U, add_a_n, U,
+            ret_nz, U, jp_nz_nn, jp_nn, call_nz_nn, U, add_a_n, rst_00,
             // 0xC8-0xCF
-            U, U, U, U, U, U, adc_a_n, U,
+            ret_z, ret, jp_z_nn, U, call_z_nn, call_nn, adc_a_n, rst_08,
             // 0xD0-0xD7
-            U, U, U, U, U, U, sub_a_n, U,
+            ret_nc, U, jp_nc_nn, U, call_nc_nn, U, sub_a_n, rst_10,
             // 0xD8-0xDF
-            U, U, U, U, U, U, sbc_a_n, U,
+            ret_c, reti, jp_c_nn, U, call_c_nn, U, sbc_a_n, rst_18,
             // 0xE0-0xE7
-            ldh_n_a, U, ldh_c_a, U, U, U, and_a_n, U,
+            ldh_n_a, U, ldh_c_a, U, U, U, and_a_n, rst_20,
             // 0xE8-0xEF
-            U, U, ld_nn_a, U, U, U, xor_a_n, U,
+            add_sp_n, jp_hl, ld_nn_a, U, U, U, xor_a_n, rst_28,
             // 0xF0-0xF7
-            ldh_a_n, U, ldh_a_c, U, U, U, or_a_n, U,
+            ldh_a_n, U, ldh_a_c, di, U, U, or_a_n, rst_30,
             // 0xF8-0xFF
-            ld_hl_sp_n, ld_sp_hl, ld_a_nn, U, U, U, cp_a_n, U,
+            ld_hl_sp_n, ld_sp_hl, ld_a_nn, ei, U, U, cp_a_n, rst_38,
         ];
         &TABLE
     }
@@ -811,6 +814,378 @@ pub mod ops {
         3
     }
 
+    // --- Stack helpers ---
+
+    fn push_u16(gb: &mut GameBoy, v: u16) {
+        let (hi, lo) = crate::util::u16_to_u8s(v);
+        gb.cpu.sp = gb.cpu.sp.wrapping_sub(1);
+        gb.mmu.write(gb.cpu.sp, hi);
+        gb.cpu.sp = gb.cpu.sp.wrapping_sub(1);
+        gb.mmu.write(gb.cpu.sp, lo);
+    }
+
+    fn pop_u16(gb: &mut GameBoy) -> u16 {
+        let lo = gb.mmu.read(gb.cpu.sp);
+        gb.cpu.sp = gb.cpu.sp.wrapping_add(1);
+        let hi = gb.mmu.read(gb.cpu.sp);
+        gb.cpu.sp = gb.cpu.sp.wrapping_add(1);
+        crate::util::u8s_to_u16(hi, lo)
+    }
+
+    // --- Jumps ---
+
+    fn jp_nn(gb: &mut GameBoy) -> u32 {
+        gb.cpu.pc = fetch_u16(gb);
+        4
+    }
+
+    fn jp_hl(gb: &mut GameBoy) -> u32 {
+        gb.cpu.pc = gb.cpu.hl();
+        1
+    }
+
+    macro_rules! jp_cc {
+        ($name:ident, $flag:ident, $expect:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = fetch_u16(gb);
+                if gb.cpu.$flag() == $expect {
+                    gb.cpu.pc = addr;
+                    4
+                } else {
+                    3
+                }
+            }
+        };
+    }
+
+    jp_cc!(jp_nz_nn, flag_z, false);
+    jp_cc!(jp_z_nn, flag_z, true);
+    jp_cc!(jp_nc_nn, flag_c, false);
+    jp_cc!(jp_c_nn, flag_c, true);
+
+    // --- Relative jumps (signed 8-bit offset) ---
+
+    fn jr_n(gb: &mut GameBoy) -> u32 {
+        let offset = fetch_u8(gb) as i8;
+        gb.cpu.pc = gb.cpu.pc.wrapping_add(offset as u16);
+        3
+    }
+
+    macro_rules! jr_cc {
+        ($name:ident, $flag:ident, $expect:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let offset = fetch_u8(gb) as i8;
+                if gb.cpu.$flag() == $expect {
+                    gb.cpu.pc = gb.cpu.pc.wrapping_add(offset as u16);
+                    3
+                } else {
+                    2
+                }
+            }
+        };
+    }
+
+    jr_cc!(jr_nz, flag_z, false);
+    jr_cc!(jr_z, flag_z, true);
+    jr_cc!(jr_nc, flag_c, false);
+    jr_cc!(jr_c, flag_c, true);
+
+    // --- Calls ---
+
+    fn call_nn(gb: &mut GameBoy) -> u32 {
+        let addr = fetch_u16(gb);
+        push_u16(gb, gb.cpu.pc);
+        gb.cpu.pc = addr;
+        6
+    }
+
+    macro_rules! call_cc {
+        ($name:ident, $flag:ident, $expect:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = fetch_u16(gb);
+                if gb.cpu.$flag() == $expect {
+                    push_u16(gb, gb.cpu.pc);
+                    gb.cpu.pc = addr;
+                    6
+                } else {
+                    3
+                }
+            }
+        };
+    }
+
+    call_cc!(call_nz_nn, flag_z, false);
+    call_cc!(call_z_nn, flag_z, true);
+    call_cc!(call_nc_nn, flag_c, false);
+    call_cc!(call_c_nn, flag_c, true);
+
+    // --- Returns ---
+
+    fn ret(gb: &mut GameBoy) -> u32 {
+        gb.cpu.pc = pop_u16(gb);
+        4
+    }
+
+    macro_rules! ret_cc {
+        ($name:ident, $flag:ident, $expect:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                if gb.cpu.$flag() == $expect {
+                    gb.cpu.pc = pop_u16(gb);
+                    5
+                } else {
+                    2
+                }
+            }
+        };
+    }
+
+    ret_cc!(ret_nz, flag_z, false);
+    ret_cc!(ret_z, flag_z, true);
+    ret_cc!(ret_nc, flag_c, false);
+    ret_cc!(ret_c, flag_c, true);
+
+    fn reti(gb: &mut GameBoy) -> u32 {
+        gb.cpu.pc = pop_u16(gb);
+        gb.cpu.ime = true;
+        4
+    }
+
+    // --- Restarts (call to fixed address in page 0) ---
+
+    macro_rules! rst {
+        ($name:ident, $addr:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                push_u16(gb, gb.cpu.pc);
+                gb.cpu.pc = $addr;
+                4
+            }
+        };
+    }
+
+    rst!(rst_00, 0x00);
+    rst!(rst_08, 0x08);
+    rst!(rst_10, 0x10);
+    rst!(rst_18, 0x18);
+    rst!(rst_20, 0x20);
+    rst!(rst_28, 0x28);
+    rst!(rst_30, 0x30);
+    rst!(rst_38, 0x38);
+
+    // --- 16-bit INC/DEC (no flag changes) ---
+
+    macro_rules! inc_rr {
+        ($name:ident, $get:ident, $set:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$get().wrapping_add(1);
+                gb.cpu.$set(v);
+                2
+            }
+        };
+    }
+
+    macro_rules! dec_rr {
+        ($name:ident, $get:ident, $set:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$get().wrapping_sub(1);
+                gb.cpu.$set(v);
+                2
+            }
+        };
+    }
+
+    inc_rr!(inc_bc, bc, set_bc);
+    dec_rr!(dec_bc, bc, set_bc);
+    inc_rr!(inc_de, de, set_de);
+    dec_rr!(dec_de, de, set_de);
+    inc_rr!(inc_hl, hl, set_hl);
+    dec_rr!(dec_hl, hl, set_hl);
+
+    fn inc_sp(gb: &mut GameBoy) -> u32 {
+        gb.cpu.sp = gb.cpu.sp.wrapping_add(1);
+        2
+    }
+
+    fn dec_sp(gb: &mut GameBoy) -> u32 {
+        gb.cpu.sp = gb.cpu.sp.wrapping_sub(1);
+        2
+    }
+
+    // --- ADD HL,rr (N cleared, H/C set from 16-bit add, Z preserved) ---
+
+    macro_rules! add_hl {
+        ($name:ident, $get:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let hl = gb.cpu.hl();
+                let v = gb.cpu.$get();
+                let result = hl as u32 + v as u32;
+                gb.cpu.set_flag_n(false);
+                gb.cpu
+                    .set_flag_h(((hl & 0x0FFF) + (v & 0x0FFF)) > 0x0FFF);
+                gb.cpu.set_flag_c(result > 0xFFFF);
+                gb.cpu.set_hl(result as u16);
+                2
+            }
+        };
+    }
+
+    add_hl!(add_hl_bc, bc);
+    add_hl!(add_hl_de, de);
+    add_hl!(add_hl_hl, hl);
+
+    fn add_hl_sp(gb: &mut GameBoy) -> u32 {
+        let hl = gb.cpu.hl();
+        let v = gb.cpu.sp;
+        let result = hl as u32 + v as u32;
+        gb.cpu.set_flag_n(false);
+        gb.cpu
+            .set_flag_h(((hl & 0x0FFF) + (v & 0x0FFF)) > 0x0FFF);
+        gb.cpu.set_flag_c(result > 0xFFFF);
+        gb.cpu.set_hl(result as u16);
+        2
+    }
+
+    // 0xE8: ADD SP,n — signed offset; Z and N cleared, H/C from low-byte carry.
+    fn add_sp_n(gb: &mut GameBoy) -> u32 {
+        let raw = fetch_u8(gb);
+        let signed = raw as i8 as i32;
+        let sp = gb.cpu.sp as i32;
+        let result = sp + signed;
+
+        gb.cpu.set_flag_z(false);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(((sp ^ signed ^ result) & 0x10) != 0);
+        gb.cpu.set_flag_c(((sp ^ signed ^ result) & 0x100) != 0);
+        gb.cpu.sp = result as u16;
+        4
+    }
+
+    // --- Accumulator rotates (Z always cleared; N, H cleared; C gets shifted bit) ---
+
+    fn rlca(gb: &mut GameBoy) -> u32 {
+        let a = gb.cpu.a;
+        let carry = a & 0x80 != 0;
+        gb.cpu.a = a.rotate_left(1);
+        gb.cpu.set_flag_z(false);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(carry);
+        1
+    }
+
+    fn rla(gb: &mut GameBoy) -> u32 {
+        let a = gb.cpu.a;
+        let old_carry = gb.cpu.flag_c() as u8;
+        let carry = a & 0x80 != 0;
+        gb.cpu.a = (a << 1) | old_carry;
+        gb.cpu.set_flag_z(false);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(carry);
+        1
+    }
+
+    fn rrca(gb: &mut GameBoy) -> u32 {
+        let a = gb.cpu.a;
+        let carry = a & 0x01 != 0;
+        gb.cpu.a = a.rotate_right(1);
+        gb.cpu.set_flag_z(false);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(carry);
+        1
+    }
+
+    fn rra(gb: &mut GameBoy) -> u32 {
+        let a = gb.cpu.a;
+        let old_carry = gb.cpu.flag_c() as u8;
+        let carry = a & 0x01 != 0;
+        gb.cpu.a = (a >> 1) | (old_carry << 7);
+        gb.cpu.set_flag_z(false);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(carry);
+        1
+    }
+
+    // --- Flag/accumulator adjust ---
+
+    // 0x27: DAA — decimal adjust after BCD add/subtract.
+    fn daa(gb: &mut GameBoy) -> u32 {
+        let mut a = gb.cpu.a;
+        let mut adjust = 0u8;
+        let mut carry = gb.cpu.flag_c();
+
+        if gb.cpu.flag_h() || (!gb.cpu.flag_n() && (a & 0x0F) > 9) {
+            adjust |= 0x06;
+        }
+        if gb.cpu.flag_c() || (!gb.cpu.flag_n() && a > 0x99) {
+            adjust |= 0x60;
+            carry = true;
+        }
+
+        a = if gb.cpu.flag_n() {
+            a.wrapping_sub(adjust)
+        } else {
+            a.wrapping_add(adjust)
+        };
+
+        gb.cpu.a = a;
+        gb.cpu.set_flag_z(a == 0);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(carry);
+        1
+    }
+
+    // 0x2F: CPL — complement A, set N and H.
+    fn cpl(gb: &mut GameBoy) -> u32 {
+        gb.cpu.a = !gb.cpu.a;
+        gb.cpu.set_flag_n(true);
+        gb.cpu.set_flag_h(true);
+        1
+    }
+
+    // 0x37: SCF — set carry, clear N and H.
+    fn scf(gb: &mut GameBoy) -> u32 {
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(true);
+        1
+    }
+
+    // 0x3F: CCF — complement carry, clear N and H.
+    fn ccf(gb: &mut GameBoy) -> u32 {
+        let c = gb.cpu.flag_c();
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(!c);
+        1
+    }
+
+    // --- CPU control ---
+
+    // 0x76: HALT — no-op until interrupts are implemented.
+    fn halt(_: &mut GameBoy) -> u32 {
+        1
+    }
+
+    // 0x10: STOP — consumes a padding byte; no-op for now.
+    fn stop(gb: &mut GameBoy) -> u32 {
+        let _ = fetch_u8(gb);
+        1
+    }
+
+    // 0xF3: DI — disable interrupts.
+    fn di(gb: &mut GameBoy) -> u32 {
+        gb.cpu.ime = false;
+        1
+    }
+
+    // 0xFB: EI — enable interrupts (takes effect after the next instruction).
+    fn ei(gb: &mut GameBoy) -> u32 {
+        gb.cpu.ime = true;
+        1
+    }
+
     #[cfg(test)]
     mod tests {
         use crate::cartridge::Cartridge;
@@ -992,6 +1367,324 @@ pub mod ops {
             assert!(gb.cpu.flag_z());
             assert!(!gb.cpu.flag_h());
             assert!(!gb.cpu.flag_c());
+        }
+
+        // --- Phase 5: jumps, calls, returns, stack ---
+
+        #[test]
+        fn jp_nn_sets_pc() {
+            let mut gb = gb_with(&[0xC3, 0x50, 0x01]); // JP 0x0150
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.pc, 0x0150);
+        }
+
+        #[test]
+        fn jp_hl_sets_pc() {
+            let mut gb = gb_with(&[0xE9]); // JP HL
+            gb.cpu.set_hl(0xC000);
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.pc, 0xC000);
+        }
+
+        #[test]
+        fn jp_cc_taken_and_not_taken() {
+            // JP NZ,0x0200 with Z set: not taken (3 cycles, PC past operands)
+            let mut gb = gb_with(&[0xC2, 0x00, 0x02]);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.cpu.pc, 0x0103);
+
+            // JP NZ,0x0200 with Z clear: taken
+            let mut gb = gb_with(&[0xC2, 0x00, 0x02]);
+            gb.cpu.set_flag_z(false);
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.pc, 0x0200);
+
+            // JP C,0x0200 with C set: taken
+            let mut gb = gb_with(&[0xDA, 0x00, 0x02]);
+            gb.cpu.set_flag_c(true);
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.pc, 0x0200);
+        }
+
+        #[test]
+        fn jr_n_relative_forward_and_backward() {
+            // JR +2 from 0x0102 -> 0x0104
+            let mut gb = gb_with(&[0x18, 0x02]);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.cpu.pc, 0x0104);
+
+            // JR -2 from 0x0102 -> 0x0100
+            let mut gb = gb_with(&[0x18, 0xFE]);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.cpu.pc, 0x0100);
+        }
+
+        #[test]
+        fn jr_cc_taken_and_not_taken() {
+            // JR Z,+2 with Z clear: not taken
+            let mut gb = gb_with(&[0x28, 0x02]);
+            gb.cpu.set_flag_z(false);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.pc, 0x0102);
+
+            // JR Z,+2 with Z set: taken
+            let mut gb = gb_with(&[0x28, 0x02]);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.cpu.pc, 0x0104);
+
+            // JR NC,+2 with C set: not taken
+            let mut gb = gb_with(&[0x30, 0x02]);
+            gb.cpu.set_flag_c(true);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.pc, 0x0102);
+        }
+
+        #[test]
+        fn call_pushes_return_address_and_jumps() {
+            let mut gb = gb_with(&[0xCD, 0x00, 0x02]); // CALL 0x0200
+            assert_eq!(gb.step(), 6);
+            assert_eq!(gb.cpu.pc, 0x0200);
+            assert_eq!(gb.cpu.sp, 0xFFFC);
+            // Return address 0x0103 stored little-endian on the stack.
+            assert_eq!(gb.mmu.read(0xFFFC), 0x03);
+            assert_eq!(gb.mmu.read(0xFFFD), 0x01);
+        }
+
+        #[test]
+        fn call_cc_respects_condition() {
+            // CALL Z,0x0200 with Z clear: not taken
+            let mut gb = gb_with(&[0xCC, 0x00, 0x02]);
+            gb.cpu.set_flag_z(false);
+            assert_eq!(gb.step(), 3);
+            assert_eq!(gb.cpu.pc, 0x0103);
+            assert_eq!(gb.cpu.sp, 0xFFFE);
+
+            // CALL Z,0x0200 with Z set: taken
+            let mut gb = gb_with(&[0xCC, 0x00, 0x02]);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 6);
+            assert_eq!(gb.cpu.pc, 0x0200);
+            assert_eq!(gb.cpu.sp, 0xFFFC);
+        }
+
+        #[test]
+        fn call_then_ret_roundtrip() {
+            // 0x0100: CALL 0x0150 ... 0x0150: RET
+            let mut rom = vec![0u8; 0x8000];
+            rom[0x0100] = 0xCD;
+            rom[0x0101] = 0x50;
+            rom[0x0102] = 0x01;
+            rom[0x0150] = 0xC9;
+            let mut gb = GameBoy::new(Cartridge::new(rom));
+            gb.step(); // CALL
+            let cycles = gb.step(); // RET
+            assert_eq!(cycles, 4);
+            assert_eq!(gb.cpu.pc, 0x0103);
+            assert_eq!(gb.cpu.sp, 0xFFFE);
+        }
+
+        #[test]
+        fn ret_cc_respects_condition() {
+            // RET NZ with Z set: not taken
+            let mut gb = gb_with(&[0xC0]);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.pc, 0x0101);
+
+            // RET NZ with Z clear: pops
+            let mut gb = gb_with(&[0xC0]);
+            gb.cpu.set_flag_z(false);
+            gb.mmu.write(0xFFFC, 0x34);
+            gb.mmu.write(0xFFFD, 0x12);
+            gb.cpu.sp = 0xFFFC;
+            assert_eq!(gb.step(), 5);
+            assert_eq!(gb.cpu.pc, 0x1234);
+            assert_eq!(gb.cpu.sp, 0xFFFE);
+        }
+
+        #[test]
+        fn reti_pops_and_enables_interrupts() {
+            let mut gb = gb_with(&[0xD9]); // RETI
+            gb.mmu.write(0xFFFC, 0x00);
+            gb.mmu.write(0xFFFD, 0x03);
+            gb.cpu.sp = 0xFFFC;
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.pc, 0x0300);
+            assert!(gb.cpu.ime);
+        }
+
+        #[test]
+        fn rst_jumps_to_fixed_address() {
+            let mut gb = gb_with(&[0xFF]); // RST 0x38
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.pc, 0x0038);
+            assert_eq!(gb.cpu.sp, 0xFFFC);
+            assert_eq!(gb.mmu.read(0xFFFC), 0x01);
+            assert_eq!(gb.mmu.read(0xFFFD), 0x01);
+        }
+
+        // --- Phase 5: 16-bit INC/DEC ---
+
+        #[test]
+        fn inc_dec_16bit_wrap_and_keep_flags() {
+            let mut gb = gb_with(&[0x03, 0x0B]); // INC BC, DEC BC
+            gb.cpu.set_bc(0x00FF);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.bc(), 0x0100);
+            assert!(gb.cpu.flag_z()); // 16-bit INC does not touch flags
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.bc(), 0x00FF);
+        }
+
+        #[test]
+        fn inc_dec_sp() {
+            let mut gb = gb_with(&[0x33, 0x3B]); // INC SP, DEC SP
+            gb.cpu.sp = 0xFFFF;
+            gb.step();
+            assert_eq!(gb.cpu.sp, 0x0000);
+            gb.step();
+            assert_eq!(gb.cpu.sp, 0xFFFF);
+        }
+
+        // --- Phase 5: ADD HL / ADD SP ---
+
+        #[test]
+        fn add_hl_bc_sets_carry_and_halfcarry() {
+            let mut gb = gb_with(&[0x09]); // ADD HL,BC
+            gb.cpu.set_hl(0x8FFF);
+            gb.cpu.set_bc(0x8001);
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.hl(), 0x1000);
+            assert!(gb.cpu.flag_z()); // preserved
+            assert!(!gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn add_sp_n_signed_offset() {
+            let mut gb = gb_with(&[0xE8, 0x02]); // ADD SP,+2
+            gb.cpu.sp = 0xFFF8;
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.cpu.sp, 0xFFFA);
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+
+            let mut gb = gb_with(&[0xE8, 0xFE]); // ADD SP,-2
+            gb.cpu.sp = 0x0002;
+            gb.step();
+            assert_eq!(gb.cpu.sp, 0x0000);
+            assert!(gb.cpu.flag_h()); // 0x02 + 0xFE carries from bit 3
+            assert!(gb.cpu.flag_c());
+        }
+
+        // --- Phase 5: rotates ---
+
+        #[test]
+        fn rlca_rotates_and_clears_z() {
+            let mut gb = gb_with(&[0x07]); // RLCA
+            gb.cpu.a = 0x85;
+            gb.cpu.set_flag_z(true);
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.a, 0x0B);
+            assert!(gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn rla_shifts_through_carry() {
+            let mut gb = gb_with(&[0x17]); // RLA
+            gb.cpu.a = 0x80;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x01);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn rrca_rotates_right() {
+            let mut gb = gb_with(&[0x0F]); // RRCA
+            gb.cpu.a = 0x01;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x80);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn rra_shifts_right_through_carry() {
+            let mut gb = gb_with(&[0x1F]); // RRA
+            gb.cpu.a = 0x01;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x80);
+            assert!(gb.cpu.flag_c());
+        }
+
+        // --- Phase 5: DAA, CPL, SCF, CCF, DI, EI ---
+
+        #[test]
+        fn daa_after_addition() {
+            // 0x15 + 0x27 = 0x3C; DAA -> 0x42 (BCD)
+            let mut gb = gb_with(&[0x27]); // DAA
+            gb.cpu.a = 0x3C;
+            gb.cpu.set_flag_n(false);
+            gb.cpu.set_flag_h(true);
+            gb.cpu.set_flag_c(false);
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.a, 0x42);
+            assert!(!gb.cpu.flag_h());
+            assert!(!gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn daa_after_subtraction() {
+            // 0x42 - 0x15 = 0x2D; DAA -> 0x27 (BCD)
+            let mut gb = gb_with(&[0x27]);
+            gb.cpu.a = 0x2D;
+            gb.cpu.set_flag_n(true);
+            gb.cpu.set_flag_h(true);
+            gb.cpu.set_flag_c(false);
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x27);
+            assert!(!gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cpl_complements_a_and_sets_flags() {
+            let mut gb = gb_with(&[0x2F]); // CPL
+            gb.cpu.a = 0x35;
+            assert_eq!(gb.step(), 1);
+            assert_eq!(gb.cpu.a, 0xCA);
+            assert!(gb.cpu.flag_n());
+            assert!(gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn scf_and_ccf_manage_carry() {
+            let mut gb = gb_with(&[0x37, 0x3F]); // SCF, CCF
+            gb.cpu.set_flag_c(false);
+            gb.step();
+            assert!(gb.cpu.flag_c());
+            gb.step();
+            assert!(!gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn di_ei_toggle_ime() {
+            let mut gb = gb_with(&[0xFB, 0xF3]); // EI, DI
+            assert!(!gb.cpu.ime);
+            gb.step();
+            assert!(gb.cpu.ime);
+            gb.step();
+            assert!(!gb.cpu.ime);
         }
 
         #[test]
