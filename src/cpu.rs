@@ -280,7 +280,7 @@ pub mod ops {
             // 0xC0-0xC7
             ret_nz, U, jp_nz_nn, jp_nn, call_nz_nn, U, add_a_n, rst_00,
             // 0xC8-0xCF
-            ret_z, ret, jp_z_nn, U, call_z_nn, call_nn, adc_a_n, rst_08,
+            ret_z, ret, jp_z_nn, cb_prefix, call_z_nn, call_nn, adc_a_n, rst_08,
             // 0xD0-0xD7
             ret_nc, U, jp_nc_nn, U, call_nc_nn, U, sub_a_n, rst_10,
             // 0xD8-0xDF
@@ -1186,6 +1186,362 @@ pub mod ops {
         1
     }
 
+    // --- CB-prefixed opcodes: rotates, shifts, bit operations ---
+
+    // 0xCB: fetch the second opcode byte and dispatch through the CB table.
+    fn cb_prefix(gb: &mut GameBoy) -> u32 {
+        let opcode = fetch_u8(gb);
+        cb_table()[opcode as usize](gb)
+    }
+
+    pub fn cb_table() -> &'static [Instr; 256] {
+        static TABLE: [Instr; 256] = [
+            // 0x00-0x07 = RLC r
+            rlc_b, rlc_c, rlc_d, rlc_e, rlc_h, rlc_l, rlc_hlm, rlc_a,
+            // 0x08-0x0F = RRC r
+            rrc_b, rrc_c, rrc_d, rrc_e, rrc_h, rrc_l, rrc_hlm, rrc_a,
+            // 0x10-0x17 = RL r
+            rl_b, rl_c, rl_d, rl_e, rl_h, rl_l, rl_hlm, rl_a,
+            // 0x18-0x1F = RR r
+            rr_b, rr_c, rr_d, rr_e, rr_h, rr_l, rr_hlm, rr_a,
+            // 0x20-0x27 = SLA r
+            sla_b, sla_c, sla_d, sla_e, sla_h, sla_l, sla_hlm, sla_a,
+            // 0x28-0x2F = SRA r
+            sra_b, sra_c, sra_d, sra_e, sra_h, sra_l, sra_hlm, sra_a,
+            // 0x30-0x37 = SWAP r
+            swap_b, swap_c, swap_d, swap_e, swap_h, swap_l, swap_hlm, swap_a,
+            // 0x38-0x3F = SRL r
+            srl_b, srl_c, srl_d, srl_e, srl_h, srl_l, srl_hlm, srl_a,
+            // 0x40-0x47 = BIT 0,r
+            bit0_b, bit0_c, bit0_d, bit0_e, bit0_h, bit0_l, bit0_hlm, bit0_a,
+            // 0x48-0x4F = BIT 1,r
+            bit1_b, bit1_c, bit1_d, bit1_e, bit1_h, bit1_l, bit1_hlm, bit1_a,
+            // 0x50-0x57 = BIT 2,r
+            bit2_b, bit2_c, bit2_d, bit2_e, bit2_h, bit2_l, bit2_hlm, bit2_a,
+            // 0x58-0x5F = BIT 3,r
+            bit3_b, bit3_c, bit3_d, bit3_e, bit3_h, bit3_l, bit3_hlm, bit3_a,
+            // 0x60-0x67 = BIT 4,r
+            bit4_b, bit4_c, bit4_d, bit4_e, bit4_h, bit4_l, bit4_hlm, bit4_a,
+            // 0x68-0x6F = BIT 5,r
+            bit5_b, bit5_c, bit5_d, bit5_e, bit5_h, bit5_l, bit5_hlm, bit5_a,
+            // 0x70-0x77 = BIT 6,r
+            bit6_b, bit6_c, bit6_d, bit6_e, bit6_h, bit6_l, bit6_hlm, bit6_a,
+            // 0x78-0x7F = BIT 7,r
+            bit7_b, bit7_c, bit7_d, bit7_e, bit7_h, bit7_l, bit7_hlm, bit7_a,
+            // 0x80-0x87 = RES 0,r
+            res0_b, res0_c, res0_d, res0_e, res0_h, res0_l, res0_hlm, res0_a,
+            // 0x88-0x8F = RES 1,r
+            res1_b, res1_c, res1_d, res1_e, res1_h, res1_l, res1_hlm, res1_a,
+            // 0x90-0x97 = RES 2,r
+            res2_b, res2_c, res2_d, res2_e, res2_h, res2_l, res2_hlm, res2_a,
+            // 0x98-0x9F = RES 3,r
+            res3_b, res3_c, res3_d, res3_e, res3_h, res3_l, res3_hlm, res3_a,
+            // 0xA0-0xA7 = RES 4,r
+            res4_b, res4_c, res4_d, res4_e, res4_h, res4_l, res4_hlm, res4_a,
+            // 0xA8-0xAF = RES 5,r
+            res5_b, res5_c, res5_d, res5_e, res5_h, res5_l, res5_hlm, res5_a,
+            // 0xB0-0xB7 = RES 6,r
+            res6_b, res6_c, res6_d, res6_e, res6_h, res6_l, res6_hlm, res6_a,
+            // 0xB8-0xBF = RES 7,r
+            res7_b, res7_c, res7_d, res7_e, res7_h, res7_l, res7_hlm, res7_a,
+            // 0xC0-0xC7 = SET 0,r
+            set0_b, set0_c, set0_d, set0_e, set0_h, set0_l, set0_hlm, set0_a,
+            // 0xC8-0xCF = SET 1,r
+            set1_b, set1_c, set1_d, set1_e, set1_h, set1_l, set1_hlm, set1_a,
+            // 0xD0-0xD7 = SET 2,r
+            set2_b, set2_c, set2_d, set2_e, set2_h, set2_l, set2_hlm, set2_a,
+            // 0xD8-0xDF = SET 3,r
+            set3_b, set3_c, set3_d, set3_e, set3_h, set3_l, set3_hlm, set3_a,
+            // 0xE0-0xE7 = SET 4,r
+            set4_b, set4_c, set4_d, set4_e, set4_h, set4_l, set4_hlm, set4_a,
+            // 0xE8-0xEF = SET 5,r
+            set5_b, set5_c, set5_d, set5_e, set5_h, set5_l, set5_hlm, set5_a,
+            // 0xF0-0xF7 = SET 6,r
+            set6_b, set6_c, set6_d, set6_e, set6_h, set6_l, set6_hlm, set6_a,
+            // 0xF8-0xFF = SET 7,r
+            set7_b, set7_c, set7_d, set7_e, set7_h, set7_l, set7_hlm, set7_a,
+        ];
+        &TABLE
+    }
+
+    // Shared rotate/shift cores. All set Z from the result, clear N and H,
+    // and put the shifted-out bit into C.
+    fn cb_rlc(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = v.rotate_left(1);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x80 != 0);
+        r
+    }
+
+    fn cb_rrc(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = v.rotate_right(1);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x01 != 0);
+        r
+    }
+
+    fn cb_rl(gb: &mut GameBoy, v: u8) -> u8 {
+        let old_c = gb.cpu.flag_c() as u8;
+        let r = (v << 1) | old_c;
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x80 != 0);
+        r
+    }
+
+    fn cb_rr(gb: &mut GameBoy, v: u8) -> u8 {
+        let old_c = gb.cpu.flag_c() as u8;
+        let r = (v >> 1) | (old_c << 7);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x01 != 0);
+        r
+    }
+
+    fn cb_sla(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = v << 1;
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x80 != 0);
+        r
+    }
+
+    fn cb_sra(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = (v >> 1) | (v & 0x80);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x01 != 0);
+        r
+    }
+
+    fn cb_swap(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = v.rotate_left(4);
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(false);
+        r
+    }
+
+    fn cb_srl(gb: &mut GameBoy, v: u8) -> u8 {
+        let r = v >> 1;
+        gb.cpu.set_flag_z(r == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(false);
+        gb.cpu.set_flag_c(v & 0x01 != 0);
+        r
+    }
+
+    // BIT: Z = bit is clear, N cleared, H set, C preserved. No writeback.
+    fn cb_bit(gb: &mut GameBoy, v: u8, bit: u8) {
+        gb.cpu.set_flag_z(v & (1 << bit) == 0);
+        gb.cpu.set_flag_n(false);
+        gb.cpu.set_flag_h(true);
+    }
+
+    macro_rules! cb_op_r {
+        ($name:ident, $f:ident, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$reg;
+                let r = $f(gb, v);
+                gb.cpu.$reg = r;
+                2
+            }
+        };
+    }
+
+    macro_rules! cb_op_hlm {
+        ($name:ident, $f:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                let r = $f(gb, v);
+                gb.mmu.write(addr, r);
+                4
+            }
+        };
+    }
+
+    macro_rules! cb_bit_r {
+        ($name:ident, $bit:expr, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let v = gb.cpu.$reg;
+                cb_bit(gb, v, $bit);
+                2
+            }
+        };
+    }
+
+    macro_rules! cb_bit_hlm {
+        ($name:ident, $bit:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                cb_bit(gb, v, $bit);
+                3
+            }
+        };
+    }
+
+    macro_rules! cb_res_r {
+        ($name:ident, $bit:expr, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                gb.cpu.$reg &= !(1 << $bit);
+                2
+            }
+        };
+    }
+
+    macro_rules! cb_res_hlm {
+        ($name:ident, $bit:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                gb.mmu.write(addr, v & !(1 << $bit));
+                4
+            }
+        };
+    }
+
+    macro_rules! cb_set_r {
+        ($name:ident, $bit:expr, $reg:ident) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                gb.cpu.$reg |= 1 << $bit;
+                2
+            }
+        };
+    }
+
+    macro_rules! cb_set_hlm {
+        ($name:ident, $bit:expr) => {
+            fn $name(gb: &mut GameBoy) -> u32 {
+                let addr = hl_addr(gb);
+                let v = gb.mmu.read(addr);
+                gb.mmu.write(addr, v | (1 << $bit));
+                4
+            }
+        };
+    }
+
+    // RLC
+    cb_op_r!(rlc_b, cb_rlc, b); cb_op_r!(rlc_c, cb_rlc, c); cb_op_r!(rlc_d, cb_rlc, d);
+    cb_op_r!(rlc_e, cb_rlc, e); cb_op_r!(rlc_h, cb_rlc, h); cb_op_r!(rlc_l, cb_rlc, l);
+    cb_op_r!(rlc_a, cb_rlc, a); cb_op_hlm!(rlc_hlm, cb_rlc);
+    // RRC
+    cb_op_r!(rrc_b, cb_rrc, b); cb_op_r!(rrc_c, cb_rrc, c); cb_op_r!(rrc_d, cb_rrc, d);
+    cb_op_r!(rrc_e, cb_rrc, e); cb_op_r!(rrc_h, cb_rrc, h); cb_op_r!(rrc_l, cb_rrc, l);
+    cb_op_r!(rrc_a, cb_rrc, a); cb_op_hlm!(rrc_hlm, cb_rrc);
+    // RL
+    cb_op_r!(rl_b, cb_rl, b); cb_op_r!(rl_c, cb_rl, c); cb_op_r!(rl_d, cb_rl, d);
+    cb_op_r!(rl_e, cb_rl, e); cb_op_r!(rl_h, cb_rl, h); cb_op_r!(rl_l, cb_rl, l);
+    cb_op_r!(rl_a, cb_rl, a); cb_op_hlm!(rl_hlm, cb_rl);
+    // RR
+    cb_op_r!(rr_b, cb_rr, b); cb_op_r!(rr_c, cb_rr, c); cb_op_r!(rr_d, cb_rr, d);
+    cb_op_r!(rr_e, cb_rr, e); cb_op_r!(rr_h, cb_rr, h); cb_op_r!(rr_l, cb_rr, l);
+    cb_op_r!(rr_a, cb_rr, a); cb_op_hlm!(rr_hlm, cb_rr);
+    // SLA
+    cb_op_r!(sla_b, cb_sla, b); cb_op_r!(sla_c, cb_sla, c); cb_op_r!(sla_d, cb_sla, d);
+    cb_op_r!(sla_e, cb_sla, e); cb_op_r!(sla_h, cb_sla, h); cb_op_r!(sla_l, cb_sla, l);
+    cb_op_r!(sla_a, cb_sla, a); cb_op_hlm!(sla_hlm, cb_sla);
+    // SRA
+    cb_op_r!(sra_b, cb_sra, b); cb_op_r!(sra_c, cb_sra, c); cb_op_r!(sra_d, cb_sra, d);
+    cb_op_r!(sra_e, cb_sra, e); cb_op_r!(sra_h, cb_sra, h); cb_op_r!(sra_l, cb_sra, l);
+    cb_op_r!(sra_a, cb_sra, a); cb_op_hlm!(sra_hlm, cb_sra);
+    // SWAP
+    cb_op_r!(swap_b, cb_swap, b); cb_op_r!(swap_c, cb_swap, c); cb_op_r!(swap_d, cb_swap, d);
+    cb_op_r!(swap_e, cb_swap, e); cb_op_r!(swap_h, cb_swap, h); cb_op_r!(swap_l, cb_swap, l);
+    cb_op_r!(swap_a, cb_swap, a); cb_op_hlm!(swap_hlm, cb_swap);
+    // SRL
+    cb_op_r!(srl_b, cb_srl, b); cb_op_r!(srl_c, cb_srl, c); cb_op_r!(srl_d, cb_srl, d);
+    cb_op_r!(srl_e, cb_srl, e); cb_op_r!(srl_h, cb_srl, h); cb_op_r!(srl_l, cb_srl, l);
+    cb_op_r!(srl_a, cb_srl, a); cb_op_hlm!(srl_hlm, cb_srl);
+
+    // BIT 0-7
+    cb_bit_r!(bit0_b, 0, b); cb_bit_r!(bit0_c, 0, c); cb_bit_r!(bit0_d, 0, d);
+    cb_bit_r!(bit0_e, 0, e); cb_bit_r!(bit0_h, 0, h); cb_bit_r!(bit0_l, 0, l);
+    cb_bit_r!(bit0_a, 0, a); cb_bit_hlm!(bit0_hlm, 0);
+    cb_bit_r!(bit1_b, 1, b); cb_bit_r!(bit1_c, 1, c); cb_bit_r!(bit1_d, 1, d);
+    cb_bit_r!(bit1_e, 1, e); cb_bit_r!(bit1_h, 1, h); cb_bit_r!(bit1_l, 1, l);
+    cb_bit_r!(bit1_a, 1, a); cb_bit_hlm!(bit1_hlm, 1);
+    cb_bit_r!(bit2_b, 2, b); cb_bit_r!(bit2_c, 2, c); cb_bit_r!(bit2_d, 2, d);
+    cb_bit_r!(bit2_e, 2, e); cb_bit_r!(bit2_h, 2, h); cb_bit_r!(bit2_l, 2, l);
+    cb_bit_r!(bit2_a, 2, a); cb_bit_hlm!(bit2_hlm, 2);
+    cb_bit_r!(bit3_b, 3, b); cb_bit_r!(bit3_c, 3, c); cb_bit_r!(bit3_d, 3, d);
+    cb_bit_r!(bit3_e, 3, e); cb_bit_r!(bit3_h, 3, h); cb_bit_r!(bit3_l, 3, l);
+    cb_bit_r!(bit3_a, 3, a); cb_bit_hlm!(bit3_hlm, 3);
+    cb_bit_r!(bit4_b, 4, b); cb_bit_r!(bit4_c, 4, c); cb_bit_r!(bit4_d, 4, d);
+    cb_bit_r!(bit4_e, 4, e); cb_bit_r!(bit4_h, 4, h); cb_bit_r!(bit4_l, 4, l);
+    cb_bit_r!(bit4_a, 4, a); cb_bit_hlm!(bit4_hlm, 4);
+    cb_bit_r!(bit5_b, 5, b); cb_bit_r!(bit5_c, 5, c); cb_bit_r!(bit5_d, 5, d);
+    cb_bit_r!(bit5_e, 5, e); cb_bit_r!(bit5_h, 5, h); cb_bit_r!(bit5_l, 5, l);
+    cb_bit_r!(bit5_a, 5, a); cb_bit_hlm!(bit5_hlm, 5);
+    cb_bit_r!(bit6_b, 6, b); cb_bit_r!(bit6_c, 6, c); cb_bit_r!(bit6_d, 6, d);
+    cb_bit_r!(bit6_e, 6, e); cb_bit_r!(bit6_h, 6, h); cb_bit_r!(bit6_l, 6, l);
+    cb_bit_r!(bit6_a, 6, a); cb_bit_hlm!(bit6_hlm, 6);
+    cb_bit_r!(bit7_b, 7, b); cb_bit_r!(bit7_c, 7, c); cb_bit_r!(bit7_d, 7, d);
+    cb_bit_r!(bit7_e, 7, e); cb_bit_r!(bit7_h, 7, h); cb_bit_r!(bit7_l, 7, l);
+    cb_bit_r!(bit7_a, 7, a); cb_bit_hlm!(bit7_hlm, 7);
+
+    // RES 0-7
+    cb_res_r!(res0_b, 0, b); cb_res_r!(res0_c, 0, c); cb_res_r!(res0_d, 0, d);
+    cb_res_r!(res0_e, 0, e); cb_res_r!(res0_h, 0, h); cb_res_r!(res0_l, 0, l);
+    cb_res_r!(res0_a, 0, a); cb_res_hlm!(res0_hlm, 0);
+    cb_res_r!(res1_b, 1, b); cb_res_r!(res1_c, 1, c); cb_res_r!(res1_d, 1, d);
+    cb_res_r!(res1_e, 1, e); cb_res_r!(res1_h, 1, h); cb_res_r!(res1_l, 1, l);
+    cb_res_r!(res1_a, 1, a); cb_res_hlm!(res1_hlm, 1);
+    cb_res_r!(res2_b, 2, b); cb_res_r!(res2_c, 2, c); cb_res_r!(res2_d, 2, d);
+    cb_res_r!(res2_e, 2, e); cb_res_r!(res2_h, 2, h); cb_res_r!(res2_l, 2, l);
+    cb_res_r!(res2_a, 2, a); cb_res_hlm!(res2_hlm, 2);
+    cb_res_r!(res3_b, 3, b); cb_res_r!(res3_c, 3, c); cb_res_r!(res3_d, 3, d);
+    cb_res_r!(res3_e, 3, e); cb_res_r!(res3_h, 3, h); cb_res_r!(res3_l, 3, l);
+    cb_res_r!(res3_a, 3, a); cb_res_hlm!(res3_hlm, 3);
+    cb_res_r!(res4_b, 4, b); cb_res_r!(res4_c, 4, c); cb_res_r!(res4_d, 4, d);
+    cb_res_r!(res4_e, 4, e); cb_res_r!(res4_h, 4, h); cb_res_r!(res4_l, 4, l);
+    cb_res_r!(res4_a, 4, a); cb_res_hlm!(res4_hlm, 4);
+    cb_res_r!(res5_b, 5, b); cb_res_r!(res5_c, 5, c); cb_res_r!(res5_d, 5, d);
+    cb_res_r!(res5_e, 5, e); cb_res_r!(res5_h, 5, h); cb_res_r!(res5_l, 5, l);
+    cb_res_r!(res5_a, 5, a); cb_res_hlm!(res5_hlm, 5);
+    cb_res_r!(res6_b, 6, b); cb_res_r!(res6_c, 6, c); cb_res_r!(res6_d, 6, d);
+    cb_res_r!(res6_e, 6, e); cb_res_r!(res6_h, 6, h); cb_res_r!(res6_l, 6, l);
+    cb_res_r!(res6_a, 6, a); cb_res_hlm!(res6_hlm, 6);
+    cb_res_r!(res7_b, 7, b); cb_res_r!(res7_c, 7, c); cb_res_r!(res7_d, 7, d);
+    cb_res_r!(res7_e, 7, e); cb_res_r!(res7_h, 7, h); cb_res_r!(res7_l, 7, l);
+    cb_res_r!(res7_a, 7, a); cb_res_hlm!(res7_hlm, 7);
+
+    // SET 0-7
+    cb_set_r!(set0_b, 0, b); cb_set_r!(set0_c, 0, c); cb_set_r!(set0_d, 0, d);
+    cb_set_r!(set0_e, 0, e); cb_set_r!(set0_h, 0, h); cb_set_r!(set0_l, 0, l);
+    cb_set_r!(set0_a, 0, a); cb_set_hlm!(set0_hlm, 0);
+    cb_set_r!(set1_b, 1, b); cb_set_r!(set1_c, 1, c); cb_set_r!(set1_d, 1, d);
+    cb_set_r!(set1_e, 1, e); cb_set_r!(set1_h, 1, h); cb_set_r!(set1_l, 1, l);
+    cb_set_r!(set1_a, 1, a); cb_set_hlm!(set1_hlm, 1);
+    cb_set_r!(set2_b, 2, b); cb_set_r!(set2_c, 2, c); cb_set_r!(set2_d, 2, d);
+    cb_set_r!(set2_e, 2, e); cb_set_r!(set2_h, 2, h); cb_set_r!(set2_l, 2, l);
+    cb_set_r!(set2_a, 2, a); cb_set_hlm!(set2_hlm, 2);
+    cb_set_r!(set3_b, 3, b); cb_set_r!(set3_c, 3, c); cb_set_r!(set3_d, 3, d);
+    cb_set_r!(set3_e, 3, e); cb_set_r!(set3_h, 3, h); cb_set_r!(set3_l, 3, l);
+    cb_set_r!(set3_a, 3, a); cb_set_hlm!(set3_hlm, 3);
+    cb_set_r!(set4_b, 4, b); cb_set_r!(set4_c, 4, c); cb_set_r!(set4_d, 4, d);
+    cb_set_r!(set4_e, 4, e); cb_set_r!(set4_h, 4, h); cb_set_r!(set4_l, 4, l);
+    cb_set_r!(set4_a, 4, a); cb_set_hlm!(set4_hlm, 4);
+    cb_set_r!(set5_b, 5, b); cb_set_r!(set5_c, 5, c); cb_set_r!(set5_d, 5, d);
+    cb_set_r!(set5_e, 5, e); cb_set_r!(set5_h, 5, h); cb_set_r!(set5_l, 5, l);
+    cb_set_r!(set5_a, 5, a); cb_set_hlm!(set5_hlm, 5);
+    cb_set_r!(set6_b, 6, b); cb_set_r!(set6_c, 6, c); cb_set_r!(set6_d, 6, d);
+    cb_set_r!(set6_e, 6, e); cb_set_r!(set6_h, 6, h); cb_set_r!(set6_l, 6, l);
+    cb_set_r!(set6_a, 6, a); cb_set_hlm!(set6_hlm, 6);
+    cb_set_r!(set7_b, 7, b); cb_set_r!(set7_c, 7, c); cb_set_r!(set7_d, 7, d);
+    cb_set_r!(set7_e, 7, e); cb_set_r!(set7_h, 7, h); cb_set_r!(set7_l, 7, l);
+    cb_set_r!(set7_a, 7, a); cb_set_hlm!(set7_hlm, 7);
+
     #[cfg(test)]
     mod tests {
         use crate::cartridge::Cartridge;
@@ -1685,6 +2041,153 @@ pub mod ops {
             assert!(gb.cpu.ime);
             gb.step();
             assert!(!gb.cpu.ime);
+        }
+
+        // --- Phase 6: CB-prefixed opcodes ---
+
+        #[test]
+        fn cb_rlc_b_rotates_and_sets_carry() {
+            let mut gb = gb_with(&[0xCB, 0x00]); // RLC B
+            gb.cpu.b = 0x85;
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.b, 0x0B);
+            assert!(gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn cb_rl_a_shifts_through_carry() {
+            let mut gb = gb_with(&[0xCB, 0x17]); // RL A
+            gb.cpu.a = 0x80;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x01);
+            assert!(gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_z());
+        }
+
+        #[test]
+        fn cb_rr_c_shifts_right_through_carry() {
+            let mut gb = gb_with(&[0xCB, 0x19]); // RR C
+            gb.cpu.c = 0x01;
+            gb.cpu.set_flag_c(true);
+            gb.step();
+            assert_eq!(gb.cpu.c, 0x80);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cb_zero_result_sets_z() {
+            let mut gb = gb_with(&[0xCB, 0x20]); // SLA B
+            gb.cpu.b = 0x80;
+            gb.step();
+            assert_eq!(gb.cpu.b, 0x00);
+            assert!(gb.cpu.flag_z());
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cb_sra_preserves_sign_bit() {
+            let mut gb = gb_with(&[0xCB, 0x28]); // SRA B
+            gb.cpu.b = 0x83;
+            gb.step();
+            assert_eq!(gb.cpu.b, 0xC1);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cb_srl_clears_top_bit() {
+            let mut gb = gb_with(&[0xCB, 0x38]); // SRL B
+            gb.cpu.b = 0x83;
+            gb.step();
+            assert_eq!(gb.cpu.b, 0x41);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cb_swap_exchanges_nibbles() {
+            let mut gb = gb_with(&[0xCB, 0x37]); // SWAP A
+            gb.cpu.a = 0xA5;
+            gb.step();
+            assert_eq!(gb.cpu.a, 0x5A);
+            assert!(!gb.cpu.flag_z());
+            assert!(!gb.cpu.flag_c());
+            assert!(!gb.cpu.flag_n());
+            assert!(!gb.cpu.flag_h());
+        }
+
+        #[test]
+        fn cb_hlm_ops_read_and_write_memory() {
+            let mut gb = gb_with(&[0xCB, 0x06]); // RLC (HL)
+            gb.cpu.set_hl(0xC000);
+            gb.mmu.write(0xC000, 0x81);
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.mmu.read(0xC000), 0x03);
+            assert!(gb.cpu.flag_c());
+        }
+
+        #[test]
+        fn cb_bit_tests_flag_behavior() {
+            // BIT 7,B with bit set: Z clear, H set, N clear, C preserved
+            let mut gb = gb_with(&[0xCB, 0x78]);
+            gb.cpu.b = 0x80;
+            gb.cpu.set_flag_c(true);
+            assert_eq!(gb.step(), 2);
+            assert!(!gb.cpu.flag_z());
+            assert!(gb.cpu.flag_h());
+            assert!(!gb.cpu.flag_n());
+            assert!(gb.cpu.flag_c());
+
+            // BIT 7,B with bit clear: Z set
+            let mut gb = gb_with(&[0xCB, 0x78]);
+            gb.cpu.b = 0x00;
+            gb.step();
+            assert!(gb.cpu.flag_z());
+        }
+
+        #[test]
+        fn cb_bit_hlm_costs_three_cycles() {
+            let mut gb = gb_with(&[0xCB, 0x46]); // BIT 0,(HL)
+            gb.cpu.set_hl(0xC000);
+            gb.mmu.write(0xC000, 0x01);
+            assert_eq!(gb.step(), 3);
+            assert!(!gb.cpu.flag_z());
+        }
+
+        #[test]
+        fn cb_res_clears_bit() {
+            let mut gb = gb_with(&[0xCB, 0x87]); // RES 0,A
+            gb.cpu.a = 0xFF;
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.a, 0xFE);
+        }
+
+        #[test]
+        fn cb_res_hlm_clears_bit_in_memory() {
+            let mut gb = gb_with(&[0xCB, 0x8E]); // RES 1,(HL)
+            gb.cpu.set_hl(0xC000);
+            gb.mmu.write(0xC000, 0xFF);
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.mmu.read(0xC000), 0xFD);
+        }
+
+        #[test]
+        fn cb_set_raises_bit() {
+            let mut gb = gb_with(&[0xCB, 0xC7]); // SET 0,A
+            gb.cpu.a = 0x00;
+            assert_eq!(gb.step(), 2);
+            assert_eq!(gb.cpu.a, 0x01);
+        }
+
+        #[test]
+        fn cb_set_hlm_raises_bit_in_memory() {
+            let mut gb = gb_with(&[0xCB, 0xF6]); // SET 6,(HL)
+            gb.cpu.set_hl(0xC000);
+            gb.mmu.write(0xC000, 0x00);
+            assert_eq!(gb.step(), 4);
+            assert_eq!(gb.mmu.read(0xC000), 0x40);
         }
 
         #[test]
